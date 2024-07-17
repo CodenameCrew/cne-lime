@@ -15,6 +15,7 @@ import lime.system.JNI;
 import lime.system.Sensor;
 import lime.system.SensorType;
 import lime.system.System;
+import lime.system.Tools;
 import lime.ui.Gamepad;
 import lime.ui.Joystick;
 import lime.ui.JoystickHatPosition;
@@ -59,7 +60,7 @@ class NativeApplication
 
 	public var handle:Dynamic;
 
-	private var pauseTimer:Int;
+	private var pauseTimer:Float;
 	private var parent:Application;
 	private var toggleFullscreen:Bool;
 
@@ -73,7 +74,7 @@ class NativeApplication
 	public function new(parent:Application):Void
 	{
 		this.parent = parent;
-		pauseTimer = -1;
+		pauseTimer = -1.0;
 		toggleFullscreen = true;
 
 		AudioManager.init();
@@ -90,14 +91,14 @@ class NativeApplication
 	private function advanceTimer():Void
 	{
 		#if lime_cffi
-		if (pauseTimer > -1)
+		if (pauseTimer > -1.0)
 		{
-			var offset = System.getTimer() - pauseTimer;
+			var offset = Tools.getAccurateTimer() - pauseTimer;
 			for (i in 0...Timer.sRunningTimers.length)
 			{
 				if (Timer.sRunningTimers[i] != null) Timer.sRunningTimers[i].mFireAt += offset;
 			}
-			pauseTimer = -1;
+			pauseTimer = -1.0;
 		}
 		#end
 	}
@@ -522,7 +523,7 @@ class NativeApplication
 				case WINDOW_DEACTIVATE:
 					window.onDeactivate.dispatch();
 					AudioManager.suspend();
-					pauseTimer = System.getTimer();
+					pauseTimer = Tools.getAccurateTimer();
 
 				case WINDOW_ENTER:
 					window.onEnter.dispatch();
@@ -580,7 +581,7 @@ class NativeApplication
 		#if lime_cffi
 		if (Timer.sRunningTimers.length > 0)
 		{
-			var currentTime = System.getTimer();
+			var currentTime = Tools.getAccurateTimer();
 			var foundNull = false;
 			var timer;
 
@@ -628,10 +629,10 @@ class NativeApplication
 
 @:keep /*private*/ class ApplicationEventInfo
 {
-	public var deltaTime:Int;
+	public var deltaTime:Float;
 	public var type:ApplicationEventType;
 
-	public function new(type:ApplicationEventType = null, deltaTime:Int = 0)
+	public function new(type:ApplicationEventType = null, deltaTime:Float = 0)
 	{
 		this.type = type;
 		this.deltaTime = deltaTime;

@@ -8,6 +8,7 @@ class DefineMacro
 {
 	public static function run():Void
 	{
+		Compiler.define("CNE_LIME");
 		if (!Context.defined("tools"))
 		{
 			if (Context.defined("flash"))

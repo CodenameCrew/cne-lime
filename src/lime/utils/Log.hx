@@ -81,7 +81,7 @@ class Log
 		#elseif js
 		untyped #if haxe4 js.Syntax.code #else __js__ #end ("console").log(message);
 		#else
-		trace(Std.string(message));
+		trace(message);
 		#end
 	}
 

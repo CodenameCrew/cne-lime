@@ -42,7 +42,8 @@ namespace lime {
 
 		framePeriod = 1000.0 / 60.0;
 
-		currentUpdate = 0;
+		currentUpdate = 0.0;
+		startTime = 0;
 		lastUpdate = 0;
 		nextUpdate = 0;
 
@@ -113,6 +114,16 @@ namespace lime {
 
 	}
 
+	double SDLApplication::mticks()
+	{
+		typedef std::chrono::high_resolution_clock clock;
+		typedef std::chrono::duration<float, std::milli> duration;
+
+		static clock::time_point start = clock::now();
+		duration elapsed = clock::now() - start;
+		return elapsed.count();
+	}
+
 
 	void SDLApplication::HandleEvent (SDL_Event* event) {
 
@@ -128,12 +139,17 @@ namespace lime {
 			case SDL_USEREVENT:
 
 				if (!inBackground) {
-
-					currentUpdate = SDL_GetTicks ();
+					currentUpdate = mticks();
 					applicationEvent.type = UPDATE;
 					applicationEvent.deltaTime = currentUpdate - lastUpdate;
 					lastUpdate = currentUpdate;
 
+					//printf("deltaTime: %f\n", applicationEvent.deltaTime);
+					//printf("currentUpdate: %f\n", currentUpdate);
+					//printf("lastUpdate: %f\n", lastUpdate);
+					//printf("nextUpdate: %f\n", nextUpdate);
+
+					//nextUpdate = currentUpdate + framePeriod;
 					nextUpdate += framePeriod;
 
 					while (nextUpdate <= currentUpdate) {
@@ -325,12 +341,22 @@ namespace lime {
 
 	}
 
+	/*double SDLApplication::GetTime () {
+		uint64_t counter = SDL_GetPerformanceCounter();
+		uint64_t frequency = SDL_GetPerformanceFrequency();
+
+		return static_cast<double>(
+			(counter - startTime) / static_cast<double>(frequency)
+		) * 1000.0;
+	}*/
+
 
 	void SDLApplication::Init () {
 
 		active = true;
-		lastUpdate = SDL_GetTicks ();
+		lastUpdate = mticks();
 		nextUpdate = lastUpdate;
+		startTime = mticks();
 
 	}
 
@@ -891,7 +917,7 @@ namespace lime {
 
 			}
 
-			currentUpdate = SDL_GetTicks ();
+			currentUpdate = mticks();
 
 		#if defined (IPHONE) || defined (EMSCRIPTEN)
 
@@ -905,15 +931,30 @@ namespace lime {
 
 		#else
 
+			/*if (currentUpdate >= nextUpdate) {
+				OnTimer( 0, 0 );
+				timerActive = false;
+			} else {
+				if(!timerActive) {
+					timerActive = true;
+				}
+			}*/
+
 			if (currentUpdate >= nextUpdate) {
 
 				if (timerActive) SDL_RemoveTimer (timerID);
 				OnTimer (0, 0);
 
 			} else if (!timerActive) {
-
 				timerActive = true;
 				timerID = SDL_AddTimer (nextUpdate - currentUpdate, OnTimer, 0);
+				//OnTimer(
+				//	nextUpdate - currentUpdate,
+				//	//static_cast<double>((nextUpdate - currentUpdate)),
+				//	//static_cast<double>((nextUpdate - currentUpdate) / static_cast<double>(SDL_GetPerformanceFrequency())),
+				//	0
+				//);
+				//timerID = SDL_AddTimer (nextUpdate - currentUpdate, OnTimer, 0);
 
 			}
 

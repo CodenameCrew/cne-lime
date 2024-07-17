@@ -60,20 +60,20 @@ class Timer
 
 		The accuracy of this may be platform-dependent.
 	**/
-	public function new(time_ms:Int)
+	public function new(time_ms:Float)
 	{
 		#if flash
 		var me = this;
 		id = untyped __global__["flash.utils.setInterval"](function()
 		{
 			me.run();
-		}, time_ms);
+		}, Std.int(time_ms));
 		#elseif js
 		var me = this;
-		id = untyped setInterval(function() me.run(), time_ms);
+		id = untyped setInterval(function() me.run(), Std.int(time_ms));
 		#elseif java
 		timer = new java.util.Timer();
-		timer.scheduleAtFixedRate(task = new TimerTask(this), haxe.Int64.ofInt(time_ms), haxe.Int64.ofInt(time_ms));
+		timer.scheduleAtFixedRate(task = new TimerTask(this), haxe.Int64.ofInt(Std.int(time_ms)), haxe.Int64.ofInt(Std.int(time_ms)));
 		#elseif (haxe_ver >= "3.4.0")
 		var dt = time_ms / 1000;
 		event = MainLoop.add(function()
@@ -141,7 +141,7 @@ class Timer
 
 		If `f` is null, the result is unspecified.
 	**/
-	public static function delay(f:Void->Void, time_ms:Int)
+	public static function delay(f:Void->Void, time_ms:Float)
 	{
 		var t = new haxe.Timer(time_ms);
 		t.run = function()
@@ -217,6 +217,7 @@ private class TimerTask extends java.util.TimerTask
 #end
 #else
 import lime.system.System;
+import lime.system.Tools;
 
 class Timer
 {
@@ -234,7 +235,7 @@ class Timer
 		mRunning = true;
 	}
 
-	public static function delay(f:Void->Void, time:Int)
+	public static function delay(f:Void->Void, time:Float)
 	{
 		var t = new Timer(time);
 
@@ -249,7 +250,7 @@ class Timer
 
 	private static function getMS():Float
 	{
-		return System.getTimer();
+		return Tools.getAccurateTimer();
 	}
 
 	public static function measure<T>(f:Void->T, ?pos:PosInfos):T
@@ -264,7 +265,7 @@ class Timer
 
 	public static inline function stamp():Float
 	{
-		var timer = System.getTimer();
+		var timer = Tools.getAccurateTimer();
 		return (timer > 0 ? timer / 1000 : 0);
 	}
 
