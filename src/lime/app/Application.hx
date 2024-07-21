@@ -379,6 +379,21 @@ class Application extends Module
 	public function onWindowDropFile(file:String):Void {}
 
 	/**
+		Called when a window drop text event is fired on the primary window
+	**/
+	public function onWindowDropText(text:String):Void {}
+
+	/**
+		Called when a window drag enter event is fired on the primary window
+	**/
+	public function onWindowDragEnter():Void {}
+
+	/**
+		Called when a window drag exit event is fired on the primary window
+	**/
+	public function onWindowDragExit():Void {}
+
+	/**
 		Called when a window enter event is fired on the primary window
 	**/
 	public function onWindowEnter():Void {}
@@ -475,6 +490,9 @@ class Application extends Module
 				window.onRenderContextRestored.add(onRenderContextRestored);
 				window.onDeactivate.add(onWindowDeactivate);
 				window.onDropFile.add(onWindowDropFile);
+				window.onDropText.add(onWindowDropText);
+				window.onDragEnter.add(onWindowDragEnter);
+				window.onDragExit.add(onWindowDragExit);
 				window.onEnter.add(onWindowEnter);
 				window.onExpose.add(onWindowExpose);
 				window.onFocusIn.add(onWindowFocusIn);

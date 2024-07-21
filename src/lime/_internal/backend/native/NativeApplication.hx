@@ -187,7 +187,16 @@ class NativeApplication
 	{
 		for (window in parent.windows)
 		{
-			window.onDropFile.dispatch(#if hl @:privateAccess String.fromUTF8(dropEventInfo.file) #else dropEventInfo.file #end);
+			switch (dropEventInfo.type) {
+				case DROP_FILE:
+					window.onDropFile.dispatch(#if hl @:privateAccess String.fromUTF8 #end (dropEventInfo.file));
+				case DROP_TEXT:
+					window.onDropText.dispatch(#if hl @:privateAccess String.fromUTF8 #end (dropEventInfo.file));
+				case DRAG_ENTER:
+					window.onDragEnter.dispatch();
+				case DRAG_EXIT:
+					window.onDragExit.dispatch();
+			}
 		}
 	}
 
@@ -673,22 +682,27 @@ class NativeApplication
 {
 	public var file:#if hl hl.Bytes #else String #end;
 	public var type:DropEventType;
+	public var windowID:Int;
 
-	public function new(type:DropEventType = null, file = null)
+	public function new(type:DropEventType = null, file = null, windowID:Int = 0)
 	{
 		this.type = type;
 		this.file = file;
+		this.windowID = windowID;
 	}
 
 	public function clone():DropEventInfo
 	{
-		return new DropEventInfo(type, file);
+		return new DropEventInfo(type, file, windowID);
 	}
 }
 
 #if (haxe_ver >= 4.0) private enum #else @:enum private #end abstract DropEventType(Int)
 {
 	var DROP_FILE = 0;
+	var DROP_TEXT = 1;
+	var DRAG_ENTER = 2;
+	var DRAG_EXIT = 3;
 }
 
 @:keep /*private*/ class GamepadEventInfo
