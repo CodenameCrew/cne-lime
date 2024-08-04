@@ -32,7 +32,7 @@ class Window
 	public var borderless(get, set):Bool;
 	public var context(default, null):RenderContext;
 	public var cursor(get, set):MouseCursor;
-	public var display(get, null):Display;
+	public var display(get, never):Display;
 	public var displayMode(get, set):DisplayMode;
 	#if (!lime_doc_gen || (js && html5))
 	public var element(default, null):#if (js && html5) Element #else Dynamic #end;
@@ -48,7 +48,7 @@ class Window
 
 	public var fullscreen(get, set):Bool;
 	public var height(get, set):Int;
-	public var hidden(get, null):Bool;
+	public var hidden(get, never):Bool;
 	public var id(default, null):Int;
 	public var maxHeight(get, set):Int;
 	public var maximized(get, set):Bool;
@@ -92,7 +92,7 @@ class Window
 	public var opacity(get, set):Float;
 	public var parameters:Dynamic;
 	public var resizable(get, set):Bool;
-	public var scale(get, null):Float;
+	public var scale(get, never):Float;
 	#if (!lime_doc_gen || flash || openfl)
 	public var stage(default, null):Stage;
 	#end
