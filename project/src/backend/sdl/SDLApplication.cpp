@@ -43,9 +43,9 @@ namespace lime {
 		framePeriod = 1000.0 / 60.0;
 
 		currentUpdate = 0.0;
-		startTime = 0;
-		lastUpdate = 0;
-		nextUpdate = 0;
+		startTime = 0.0;
+		lastUpdate = 0.0;
+		nextUpdate = 0.0;
 
 		ApplicationEvent applicationEvent;
 		ClipboardEvent clipboardEvent;
@@ -114,17 +114,6 @@ namespace lime {
 
 	}
 
-	double SDLApplication::mticks()
-	{
-		typedef std::chrono::high_resolution_clock clock;
-		typedef std::chrono::duration<float, std::milli> duration;
-
-		static clock::time_point start = clock::now();
-		duration elapsed = clock::now() - start;
-		return elapsed.count();
-	}
-
-
 	void SDLApplication::HandleEvent (SDL_Event* event) {
 
 		#if defined(IPHONE) || defined(EMSCRIPTEN)
@@ -139,7 +128,7 @@ namespace lime {
 			case SDL_USEREVENT:
 
 				if (!inBackground) {
-					currentUpdate = mticks();
+					currentUpdate = (SDL_GetPerformanceCounter() / SDL_GetPerformanceFrequency()) * 1000.0;
 					applicationEvent.type = UPDATE;
 					applicationEvent.deltaTime = currentUpdate - lastUpdate;
 					lastUpdate = currentUpdate;
@@ -357,9 +346,9 @@ namespace lime {
 	void SDLApplication::Init () {
 
 		active = true;
-		lastUpdate = mticks();
+		lastUpdate = (SDL_GetPerformanceCounter() / SDL_GetPerformanceFrequency()) * 1000.0;
 		nextUpdate = lastUpdate;
-		startTime = mticks();
+		startTime = (SDL_GetPerformanceCounter() / SDL_GetPerformanceFrequency()) * 1000.0;
 
 	}
 
@@ -913,74 +902,43 @@ namespace lime {
 		event.type = -1;
 
 		#if (!defined (IPHONE) && !defined (EMSCRIPTEN))
-
 		if (active && (firstTime || WaitEvent (&event))) {
-
 			firstTime = false;
-
 			HandleEvent (&event);
 			event.type = -1;
-			if (!active)
-				return active;
-
+			if (!active) return active;
 		#endif
 
 			while (SDL_PollEvent (&event)) {
-
 				HandleEvent (&event);
 				event.type = -1;
-				if (!active)
-					return active;
-
+				if (!active) return active;
 			}
 
-			currentUpdate = mticks();
-
-		#if defined (IPHONE) || defined (EMSCRIPTEN)
+			double currentUpdate = (SDL_GetPerformanceCounter() / SDL_GetPerformanceFrequency()) * 1000.0;
 
 			if (currentUpdate >= nextUpdate) {
-
-				event.type = SDL_USEREVENT;
-				HandleEvent (&event);
-				event.type = -1;
-
+				#if (defined (IPHONE) || defined (EMSCRIPTEN))
+					event.type = SDL_USEREVENT;
+					HandleEvent (&event);
+					event.type = -1;
+				#else
+					if (timerActive) SDL_RemoveTimer (timerID);
+					OnTimer(0, 0);
+				#endif
 			}
 
-		#else
-
-			/*if (currentUpdate >= nextUpdate) {
-				OnTimer( 0, 0 );
-				timerActive = false;
-			} else {
-				if(!timerActive) {
-					timerActive = true;
-				}
-			}*/
-
-			if (currentUpdate >= nextUpdate) {
-
-				if (timerActive) SDL_RemoveTimer (timerID);
-				OnTimer (0, 0);
-
-			} else if (!timerActive) {
+		#if (!defined (IPHONE) && !defined (EMSCRIPTEN))
+			else if (!timerActive) {
 				timerActive = true;
-				timerID = SDL_AddTimer (nextUpdate - currentUpdate, OnTimer, 0);
-				//OnTimer(
-				//	nextUpdate - currentUpdate,
-				//	//static_cast<double>((nextUpdate - currentUpdate)),
-				//	//static_cast<double>((nextUpdate - currentUpdate) / static_cast<double>(SDL_GetPerformanceFrequency())),
-				//	0
-				//);
-				//timerID = SDL_AddTimer (nextUpdate - currentUpdate, OnTimer, 0);
-
+				Uint32 delay = (Uint32)((nextUpdate - currentUpdate));
+				timerID = SDL_AddTimer(delay, OnTimer, 0);
 			}
-
 		}
-
 		#endif
 
-		return active;
 
+		return active;
 	}
 
 

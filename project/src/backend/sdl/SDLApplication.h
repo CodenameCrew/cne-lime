@@ -59,7 +59,6 @@ namespace lime {
 			int WaitEvent (SDL_Event* event);
 
 			//double GetTime ();
-			double mticks();
 
 			static void UpdateFrame ();
 			static void UpdateFrame (void*);
@@ -69,22 +68,22 @@ namespace lime {
 			bool active;
 			ApplicationEvent applicationEvent;
 			ClipboardEvent clipboardEvent;
-			double currentUpdate;
+			Uint64 currentUpdate;
 			double framePeriod;
 			DropEvent dropEvent;
 			GamepadEvent gamepadEvent;
 			JoystickEvent joystickEvent;
 			KeyEvent keyEvent;
-			double lastUpdate;
+			Uint64 lastUpdate;
 			MouseEvent mouseEvent;
-			double nextUpdate;
+			Uint64 nextUpdate;
 			RenderEvent renderEvent;
 			SensorEvent sensorEvent;
 			TextEvent textEvent;
 			TouchEvent touchEvent;
 			WindowEvent windowEvent;
 
-			double startTime;
+			Uint64 startTime;
 	};
 
 
