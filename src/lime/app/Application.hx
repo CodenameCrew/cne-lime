@@ -57,18 +57,18 @@ class Application extends Module
 	/**
 		The Preloader for the current Application
 	**/
-	public var preloader(get, null):Preloader;
+	public var preloader(get, never):Preloader;
 
 	/**
 		The Window associated with this Application, or the first Window
 		if there are multiple Windows active
 	**/
-	public var window(get, null):Window;
+	public var window(get, never):Window;
 
 	/**
 		A list of active Window instances associated with this Application
 	**/
-	public var windows(get, null):Array<Window>;
+	public var windows(get, never):Array<Window>;
 
 	@:noCompletion private var __backend:ApplicationBackend;
 	@:noCompletion private var __preloader:Preloader;
@@ -379,6 +379,21 @@ class Application extends Module
 	public function onWindowDropFile(file:String):Void {}
 
 	/**
+		Called when a window drop text event is fired on the primary window
+	**/
+	public function onWindowDropText(text:String):Void {}
+
+	/**
+		Called when a window drag enter event is fired on the primary window
+	**/
+	public function onWindowDragEnter():Void {}
+
+	/**
+		Called when a window drag exit event is fired on the primary window
+	**/
+	public function onWindowDragExit():Void {}
+
+	/**
 		Called when a window enter event is fired on the primary window
 	**/
 	public function onWindowEnter():Void {}
@@ -475,6 +490,9 @@ class Application extends Module
 				window.onRenderContextRestored.add(onRenderContextRestored);
 				window.onDeactivate.add(onWindowDeactivate);
 				window.onDropFile.add(onWindowDropFile);
+				window.onDropText.add(onWindowDropText);
+				window.onDragEnter.add(onWindowDragEnter);
+				window.onDragExit.add(onWindowDragExit);
 				window.onEnter.add(onWindowEnter);
 				window.onExpose.add(onWindowExpose);
 				window.onFocusIn.add(onWindowFocusIn);

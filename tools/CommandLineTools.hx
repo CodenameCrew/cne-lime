@@ -776,14 +776,22 @@ class CommandLineTools
 	{
 		var commands = [
 
-			         "config" => "Display or set command-line configuration values",    "create" => "Create a new project or extension using templates",
-			                    "clean" => "Clean the specified project and target",     "update" => "Copy assets for the specified project and target",
-			  "build" => "Compile and package for the specified project and target",    "run" => "Install and run for the specified project and target",
-			                       "test" => "Update, build and run in one command",                                  "help" => "Show this information",
-			          "trace" => "Trace output for the specifed project and target",                            "deploy" => "Archive and upload builds",
-			"display" => "Display information for the specified project and target",             "rebuild" => "Recompile native binaries for libraries",
-			       "install" => "Install a library from haxelib, plus dependencies",                        "remove" => "Remove a library from haxelib",
-			                          "upgrade" => "Upgrade a library from haxelib", "setup" => "Setup " + defaultLibraryName + " or a specific platform"
+			"config" => "Display or set command-line configuration values",
+			"create" => "Create a new project or extension using templates",
+			"clean" => "Clean the specified project and target",
+			"update" => "Copy assets for the specified project and target",
+			"build" => "Compile and package for the specified project and target",
+			"run" => "Install and run for the specified project and target",
+			"test" => "Update, build and run in one command",
+			"help" => "Show this information",
+			"trace" => "Trace output for the specifed project and target",
+			"deploy" => "Archive and upload builds",
+			"display" => "Display information for the specified project and target",
+			"rebuild" => "Recompile native binaries for libraries",
+			"install" => "Install a library from haxelib, plus dependencies",
+			"remove" => "Remove a library from haxelib",
+			"upgrade" => "Upgrade a library from haxelib",
+			"setup" => "Setup " + defaultLibraryName + " or a specific platform"
 
 		];
 

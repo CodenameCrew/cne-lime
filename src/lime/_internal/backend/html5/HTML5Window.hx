@@ -497,6 +497,10 @@ class HTML5Window
 					event.preventDefault();
 					return false;
 				}
+				parent.onDragEnter.dispatch();
+
+			case "dragend":
+				parent.onDragExit.dispatch();
 
 			case "dragover":
 				event.preventDefault();
