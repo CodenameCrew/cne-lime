@@ -36,7 +36,6 @@
 	url = https://github.com/openfl/libcairo
 [submodule "project/lib/pixman"]
 	path = project/lib/pixman
-	branch = legacy
 	url = https://github.com/CodenameCrew/cne-libpixman
 [submodule "project/lib/lzma"]
 	path = project/lib/lzma
