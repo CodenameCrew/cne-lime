@@ -353,8 +353,7 @@
 	<include name="lib/zlib/files.xml" />
 
 	<set name="BUILDSUFFIX" value="" unless="fulldebug" />
-	<set name="BUILDSUFFIX" value="" if="fulldebug" />
-	<set name="DEBUGEXTRA" value="-debug" if="fulldebug" />
+	<set name="BUILDSUFFIX" value="-debug" if="fulldebug" />
 	<set name="LIBSUFFIX" value="${HX_TARGET_SUFFIX}" if="HX_TARGET_SUFFIX" />
 	<set name="LIBSUFFIX" value="${LIBEXTRA}" unless="LIBSUFFIX" />
 
