@@ -25,7 +25,7 @@ jobs:
         run: echo "HAXEPATH=$HAXE_STD_PATH/.." >> $GITHUB_ENV
       - name: Install Haxe dependencies
         run: |
-          haxelib git hxcpp https://github.com/mcagabe19-stuff/hxcpp --quiet
+          haxelib git hxcpp https://github.com/CodenameCrew/cne-hxcpp --quiet
           haxelib install format --quiet
           haxelib install hxp --quiet
       - name: Enable HXCPP compile cache
@@ -37,10 +37,10 @@ jobs:
           haxelib run lime config ANDROID_SETUP true
       - name: Rebuild Lime
         run: |
-          haxelib run lime rebuild android -release -nocolor -nocffi -eval -ONLY_ARMV7
-          haxelib run lime rebuild android -release -nocolor -nocffi -eval -ONLY_ARM64
-          haxelib run lime rebuild android -release -nocolor -nocffi -eval -ONLY_X86
-          haxelib run lime rebuild android -release -nocolor -nocffi -eval -ONLY_X86_64
+          haxelib run lime rebuild android -release -nocolor -nocffi -ONLY_ARMV7
+          haxelib run lime rebuild android -release -nocolor -nocffi -ONLY_ARM64
+          haxelib run lime rebuild android -release -nocolor -nocffi -ONLY_X86
+          haxelib run lime rebuild android -release -nocolor -nocffi -ONLY_X86_64
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:

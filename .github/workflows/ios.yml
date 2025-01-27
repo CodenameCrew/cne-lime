@@ -20,7 +20,7 @@ jobs:
         run: echo "HAXEPATH=$HAXE_STD_PATH/.." >> $GITHUB_ENV
       - name: Install Haxe dependencies
         run: |
-          haxelib git hxcpp https://github.com/mcagabe19-stuff/hxcpp --quiet
+          haxelib git hxcpp https://github.com/CodenameCrew/cne-hxcpp --quiet
           haxelib install format --quiet
           haxelib install hxp --quiet
       - name: Enable HXCPP compile cache
@@ -29,7 +29,7 @@ jobs:
         run: haxelib dev lime ${{ github.workspace }}
       - name: Rebuild Lime
         run: |
-          haxelib run lime rebuild ios -release -nocolor -nocffi -eval
+          haxelib run lime rebuild ios -release -nocolor -nocffi
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:

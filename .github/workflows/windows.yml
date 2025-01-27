@@ -12,10 +12,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Setup MSVC Arm64
-        uses: TheMrMilchmann/setup-msvc-dev@v3
-        with:
-          arch: amd64_arm64
       - name: Setup Haxe
         uses: krdlab/setup-haxe@master
         with:
@@ -24,7 +20,7 @@ jobs:
         run: echo "HAXEPATH=$HAXE_STD_PATH/.." >> $GITHUB_ENV
       - name: Install Haxe dependencies
         run: |
-          haxelib git hxcpp https://github.com/mcagabe19-stuff/hxcpp --quiet
+          haxelib git hxcpp https://github.com/CodenameCrew/cne-hxcpp --quiet
           haxelib install format --quiet
           haxelib install hxp --quiet
       - name: Enable HXCPP compile cache
@@ -33,9 +29,8 @@ jobs:
         run: haxelib dev lime ${{ github.workspace }}
       - name: Rebuild Lime
         run: |
-          haxelib run lime rebuild windows -32 -release -nocolor -nocffi -eval
-          haxelib run lime rebuild windows -64 -release -nocolor -nocffi -eval
-          haxelib run lime rebuild windows -arm64 -release -nocolor -nocffi -eval -D HXCPP_ARM64
+          haxelib run lime rebuild windows -32 -release -nocolor -nocffi
+          haxelib run lime rebuild windows -64 -release -nocolor -nocffi
       - name: Upload Artifact (x86)
         uses: actions/upload-artifact@v4
         with:
@@ -51,15 +46,6 @@ jobs:
           name: Windows64-NDLL
           path: |
             ndll/Windows64/
-            !**/.gitignore
-            lime.png
-          if-no-files-found: error
-      - name: Upload Artifact (arm64)
-        uses: actions/upload-artifact@v4
-        with:
-          name: WindowsArm64-NDLL
-          path: |
-            ndll/WindowsArm64/
             !**/.gitignore
             lime.png
           if-no-files-found: error
