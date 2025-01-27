@@ -270,7 +270,7 @@ class Timer
 
 	public function stop():Void
 	{
-		if (mRunning)
+		/*if (mRunning)
 		{
 			mRunning = false;
 
@@ -282,7 +282,8 @@ class Timer
 					break;
 				}
 			}
-		}
+		}*/
+		mRunning = false;
 	}
 
 	@:noCompletion private function __check(inTime:Float)
