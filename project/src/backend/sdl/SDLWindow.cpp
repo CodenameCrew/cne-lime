@@ -28,7 +28,11 @@ namespace lime {
 	SDL_Cursor* SDLCursor::waitCursor = 0;
 	SDL_Cursor* SDLCursor::waitArrowCursor = 0;
 
+	#if defined (IPHONE) || defined (APPLETV)
+	static bool displayModeSet = true;
+	#else
 	static bool displayModeSet = false;
+	#endif
 
 
 	SDLWindow::SDLWindow (Application* application, int width, int height, int flags, const char* title) {
@@ -45,7 +49,7 @@ namespace lime {
 
 		int sdlWindowFlags = 0;
 
-		if (flags & WINDOW_FLAG_FULLSCREEN) sdlWindowFlags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+		if (flags & WINDOW_FLAG_FULLSCREEN) sdlWindowFlags |= displayModeSet ? SDL_WINDOW_FULLSCREEN : SDL_WINDOW_FULLSCREEN_DESKTOP;
 		if (flags & WINDOW_FLAG_RESIZABLE) sdlWindowFlags |= SDL_WINDOW_RESIZABLE;
 		if (flags & WINDOW_FLAG_BORDERLESS) sdlWindowFlags |= SDL_WINDOW_BORDERLESS;
 		if (flags & WINDOW_FLAG_HIDDEN) sdlWindowFlags |= SDL_WINDOW_HIDDEN;
@@ -948,6 +952,7 @@ namespace lime {
 
 		SDL_DisplayMode mode = { pixelFormat, displayMode->width, displayMode->height, displayMode->refreshRate, 0 };
 
+		#if !defined(IPHONE) && !defined(APPLETV) && !defined(ANDROID)
 		if (SDL_SetWindowDisplayMode (sdlWindow, &mode) == 0) {
 
 			displayModeSet = true;
@@ -959,6 +964,9 @@ namespace lime {
 			}
 
 		}
+		#else
+		SDL_SetWindowDisplayMode (sdlWindow, &mode);
+		#endif
 
 	}
 
@@ -966,6 +974,8 @@ namespace lime {
 	bool SDLWindow::SetFullscreen (bool fullscreen) {
 
 		if (fullscreen) {
+
+			#if !defined(IPHONE) && !defined(APPLETV) && !defined(ANDROID)
 
 			if (displayModeSet) {
 
@@ -976,6 +986,10 @@ namespace lime {
 				SDL_SetWindowFullscreen (sdlWindow, SDL_WINDOW_FULLSCREEN_DESKTOP);
 
 			}
+
+			#else
+			SDL_SetWindowFullscreen (sdlWindow, SDL_WINDOW_FULLSCREEN);
+			#endif
 
 		} else {
 
