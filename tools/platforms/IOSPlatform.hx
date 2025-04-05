@@ -449,6 +449,8 @@ class IOSPlatform extends PlatformTarget
 			context.HAXELIB_PATH = '';
 		}
 
+		context.FILE_SHARING = project.config.getArrayString("FILE_SHARING");
+
 		return context;
 	}
 
