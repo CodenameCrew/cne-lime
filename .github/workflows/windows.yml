@@ -9,7 +9,7 @@ jobs:
     runs-on: windows-2022
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           submodules: true
       - name: Setup Haxe
@@ -47,3 +47,4 @@ jobs:
             ndll/Windows64/
             !**/.gitignore
           if-no-files-found: error
+
