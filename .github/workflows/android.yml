@@ -42,11 +42,12 @@ jobs:
           haxelib run lime rebuild android -release -nocolor -nocffi -eval -ONLY_X86
           haxelib run lime rebuild android -release -nocolor -nocffi -eval -ONLY_X86_64
       - name: Upload Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Android-NDLL
           path: |
             ndll/Android/
             !**/.gitignore
           if-no-files-found: error
+
 

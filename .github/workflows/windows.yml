@@ -32,7 +32,7 @@ jobs:
           haxelib run lime rebuild windows -32 -release -nocolor -nocffi -eval
           haxelib run lime rebuild windows -64 -release -nocolor -nocffi -eval
       - name: Upload Artifact (x86)
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Windows-NDLL
           path: |
@@ -40,11 +40,12 @@ jobs:
             !**/.gitignore
           if-no-files-found: error
       - name: Upload Artifact (x86_64)
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: Windows64-NDLL
           path: |
             ndll/Windows64/
             !**/.gitignore
           if-no-files-found: error
+
 

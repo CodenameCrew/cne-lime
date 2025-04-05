@@ -31,11 +31,12 @@ jobs:
         run: |
           haxelib run lime rebuild ios -release -nocolor -nocffi -eval
       - name: Upload Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: iPhone-NDLL
           path: |
             ndll/iPhone/
             !**/.gitignore
           if-no-files-found: error
+
 
