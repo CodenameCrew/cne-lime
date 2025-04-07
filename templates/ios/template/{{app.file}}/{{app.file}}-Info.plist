@@ -78,5 +78,7 @@
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 	::end::
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.music-games</string>
 </dict>
 </plist>
