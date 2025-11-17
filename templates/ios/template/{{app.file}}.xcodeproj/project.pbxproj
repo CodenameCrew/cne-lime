@@ -121,6 +121,7 @@
 				6892FA0D263B5BC100EA2669 /* Metal.framework */,
 				792E75C81C6C876900D01DE0 /* GameController.framework */,
 				792E75C81C6C876900D01DE1 /* CoreText.framework */,
+				7C1D3D2E27403D7800CFEBE5 /* CoreHaptics.framework */,
 				1EEEBA9A121AF1C60048A9DF /* UIKit.framework */,
 				1EEEBAA2121AF2210048A9DF /* OpenAL.framework */,
 				1EEEBAA4121AF2210048A9DF /* OpenGLES.framework */,
