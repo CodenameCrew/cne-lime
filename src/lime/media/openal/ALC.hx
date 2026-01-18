@@ -29,10 +29,13 @@ class ALC
 	public static inline var ALL_ATTRIBUTES:Int = 0x1003;
 	public static inline var DEFAULT_DEVICE_SPECIFIER:Int = 0x1004;
 	public static inline var DEVICE_SPECIFIER:Int = 0x1005;
-	public static inline var EXTENSIONS:Int = 0x1006;
-	public static inline var ENUMERATE_ALL_EXT:Int = 1;
+	public static inline var ALC_CAPTURE_DEVICE_SPECIFIER:Int = 0x310;
+	public static inline var ALC_CAPTURE_DEFAULT_DEVICE_SPECIFIER:Int = 0x311;
+	public static inline var ALC_CAPTURE_SAMPLES:Int = 0x312;
 	public static inline var DEFAULT_ALL_DEVICES_SPECIFIER:Int = 0x1012;
 	public static inline var ALL_DEVICES_SPECIFIER:Int = 0x1013;
+	public static inline var EXTENSIONS:Int = 0x1006;
+
 	public static inline var PLAYBACK_DEVICE_SOFT:Int = 0x19D4;
 	public static inline var CAPTURE_DEVICE_SOFT:Int = 0x19D5;
 	public static inline var EVENT_TYPE_DEFAULT_DEVICE_CHANGED_SOFT:Int = 0x19D6;
@@ -154,6 +157,24 @@ class ALC
 		#if (lime_cffi && lime_openal && !macro)
 		var result = NativeCFFI.lime_alc_get_string(device, param);
 		return CFFI.stringValue(result);
+		#else
+		return null;
+		#end
+	}
+
+	public static function getStrings(device:ALDevice, param:Int):Array<String>
+	{
+		#if (lime_cffi && lime_openal && !macro)
+		var result = NativeCFFI.lime_alc_get_strings(device, param);
+		#if hl
+		if (result == null) return [];
+		var _result = [];
+		for (i in 0...result.length)
+			_result[i] = result[i];
+		return _result;
+		#else
+		return result;
+		#end
 		#else
 		return null;
 		#end
