@@ -401,6 +401,11 @@ class OpenALAudioContext
 		return AL.getSourceiv(source, param, count);
 	}
 
+	public function getSourcedvSOFT(source:ALSource, param:Int, count:Int = 1):Array<Float>
+	{
+		return AL.getSourcedvSOFT(source, param, count);
+	}
+
 	public function getString(param:Int, device:ALDevice = null):String
 	{
 		if (device == null)
