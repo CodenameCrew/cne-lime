@@ -3677,7 +3677,7 @@ namespace lime {
 
 			al_gc_mutex.Lock ();
 
-			alSoftEventCallback->Call (alloc_int((int)eventType), alloc_int((int)deviceType), CFFIPointer (device), message ? alloc_string(message) : alloc_null());
+			alSoftEventCallback->Call (alloc_int((int)eventType), alloc_int((int)deviceType), (value)CFFIPointer (device), message ? alloc_string(message) : alloc_null());
 
 			al_gc_mutex.Unlock ();
 

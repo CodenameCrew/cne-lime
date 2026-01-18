@@ -170,7 +170,7 @@ class ALC
 		if (result == null) return [];
 		var _result = [];
 		for (i in 0...result.length)
-			_result[i] = result[i];
+			_result[i] = CFFI.stringValue(result[i]);
 		return _result;
 		#else
 		return result;
