@@ -29,9 +29,9 @@ class ALC
 	public static inline var ALL_ATTRIBUTES:Int = 0x1003;
 	public static inline var DEFAULT_DEVICE_SPECIFIER:Int = 0x1004;
 	public static inline var DEVICE_SPECIFIER:Int = 0x1005;
-	public static inline var ALC_CAPTURE_DEVICE_SPECIFIER:Int = 0x310;
-	public static inline var ALC_CAPTURE_DEFAULT_DEVICE_SPECIFIER:Int = 0x311;
-	public static inline var ALC_CAPTURE_SAMPLES:Int = 0x312;
+	public static inline var CAPTURE_DEVICE_SPECIFIER:Int = 0x310;
+	public static inline var CAPTURE_DEFAULT_DEVICE_SPECIFIER:Int = 0x311;
+	public static inline var CAPTURE_SAMPLES:Int = 0x312;
 	public static inline var DEFAULT_ALL_DEVICES_SPECIFIER:Int = 0x1012;
 	public static inline var ALL_DEVICES_SPECIFIER:Int = 0x1013;
 	public static inline var EXTENSIONS:Int = 0x1006;
