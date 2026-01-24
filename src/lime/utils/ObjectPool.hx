@@ -147,7 +147,7 @@ import haxe.ds.ObjectMap;
    	**/
 	public function release(object:T):Void
 	{
-		#if debug
+		#if lime_pool_debug
 		if (object == null || !__pool.exists(object))
 		{
 			Log.error("Object is not a member of the pool");
@@ -205,7 +205,7 @@ import haxe.ds.ObjectMap;
 
 	@:noCompletion private inline function __addInactive(object:T):Void
 	{
-		#if debug
+		#if lime_pool_debug
 		__pool.set(object, false);
 		#end
 
@@ -254,7 +254,7 @@ import haxe.ds.ObjectMap;
 			}
 		}
 
-		#if debug
+		#if lime_pool_debug
 		__pool.set(object, true);
 		#end
 
