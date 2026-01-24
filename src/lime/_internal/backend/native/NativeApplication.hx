@@ -623,7 +623,7 @@ class NativeApplication
 			{
 				Timer.sRunningTimers = Timer.sRunningTimers.filter(function(val)
 				{
-					return val != null && timer.mRunning;
+					return val != null && val.mRunning;
 				});
 			}
 		}
