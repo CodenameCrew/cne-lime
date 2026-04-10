@@ -12,7 +12,7 @@ namespace lime {
 
 		public:
 
-			static std::wstring* GetText ();
+			static char* GetText ();
 			static bool HasText ();
 			static bool SetText (const char* text);
 
