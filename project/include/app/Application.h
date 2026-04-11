@@ -15,8 +15,6 @@ namespace lime {
 
 			virtual ~Application () {};
 
-			static AutoGCRoot* callback;
-
 			virtual int Exec () = 0;
 			virtual void Init () = 0;
 			virtual int Quit () = 0;
