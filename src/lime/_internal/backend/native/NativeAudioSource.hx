@@ -185,6 +185,11 @@ class NativeAudioSource
 	private static var streamMutex:Mutex = new Mutex();
 	private static var queueMutex:Mutex = new Mutex();
 
+	// Backward Compatibility Variables
+	var handle(get, set):ALSource; inline function get_handle() return source; inline function set_handle(v) return source = v;
+	var toLoop(get, set):Int; inline function get_toLoop() return streamLoops; inline function set_toLoop(v) return streamLoops = v;
+	var bufferSizes(get, set):Array<Int>; inline function get_bufferSizes() return bufferLens; inline function set_bufferSizes(v) return bufferLens = v;
+
 	public var onRefresh = new Event<NativeAudioSource->Void>();
 	public var parent:AudioSource;
 	public var source:ALSource;

@@ -1,8 +1,14 @@
 package lime.ui;
 
+import haxe.io.Bytes;
 import haxe.io.Path;
-import lime.system.CFFI;
 import lime._internal.backend.native.NativeCFFI;
+import lime.app.Event;
+import lime.graphics.Image;
+import lime.system.CFFI;
+import lime.system.ThreadPool;
+import lime.utils.ArrayBuffer;
+import lime.utils.Resource;
 
 /**
 	File dialog for opening files, saving files, and selecting directories.
@@ -26,9 +32,48 @@ import lime._internal.backend.native.NativeCFFI;
 @:noDebug
 #end
 @:access(lime._internal.backend.native.NativeCFFI)
+@:access(lime.graphics.Image)
 @:access(lime.ui.Window)
 class FileDialog
 {
+	#if false
+	/* Backward Compatibility Start */
+	// TODO
+
+	/**
+		Triggers when the user clicks "Cancel" during any operation, or when a function is unsupported
+		(such as `open()` on HTML5).
+	**/
+	public var onCancel = new Event<Void->Void>();
+
+	/**
+		Triggers when `open()` is successful. The `lime.utils.Resource` contains the file's data, and can
+		be implicitly cast to `haxe.io.Bytes`.
+	**/
+	public var onOpen = new Event<Resource->Void>();
+
+	/**
+		Triggers when `save()` is successful. The `String` is the path to the saved file.
+	**/
+	public var onSave = new Event<String->Void>();
+
+	/**
+		Triggers when `browse()` is successful and `type` is anything other than
+		`FileDialogType.OPEN_MULTIPLE`. The `String` is the path to the selected file.
+	**/
+	public var onSelect = new Event<String->Void>();
+
+	/**
+		Triggers when `browse()` is successful and `type` is `FileDialogType.OPEN_MULTIPLE`. The
+		`Array<String>` contains all selected file paths.
+	**/
+	public var onSelectMultiple = new Event<Array<String>->Void>();
+
+	public function new() {}
+
+	/* Backward Compatibility End */
+	#end
+
 	/**
 		Opens a directory selection dialog. If successful, `callback` will be called with the selected directory paths.
 		@param window        The parent window for the dialog.
