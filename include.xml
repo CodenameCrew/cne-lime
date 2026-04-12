@@ -7,6 +7,7 @@
 
 	<set name="lime" />
 	<define name="lime-funkin" />
+	<define name="lime-cne" />
 
 	<define name="native" if="cpp || hl" />
 	<define name="howlerjs" if="html5" />

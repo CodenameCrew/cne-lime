@@ -21,9 +21,9 @@ jobs:
 
       - name: Install Haxe dependencies
         run: |
-          haxelib git hxcpp https://github.com/FunkinCrew/hxcpp --quiet
+          haxelib git hxcpp https://github.com/CodenameCrew/cne-hxcpp --quiet
+          haxelib git openfl https://github.com/CodenameCrew/cne-openfl --quiet
           haxelib install format --quiet
-          haxelib install openfl --quiet
           haxelib install svg --quiet
           haxelib install hxp --quiet
           haxelib dev lime $GITHUB_WORKSPACE
