@@ -114,7 +114,12 @@ namespace lime {
 
 		if (!sdlWindow) {
 
-			printf ("Could not create SDL window: %s.\n", SDL_GetError ());
+			#if defined(IPHONE) || defined(APPLETV)
+			printf ("Could not create SDL Window: %s\n", SDL_GetError ());
+			#else
+			SDL_ShowSimpleMessageBox (SDL_MESSAGEBOX_ERROR, "Could not create SDL Window", SDL_GetError (), NULL);
+			#endif
+
 			return;
 
 		}
@@ -183,20 +188,29 @@ namespace lime {
 			}
 			#endif
 
-		} else {
-
-			SDL_GL_DestroyContext (context);
-			context = NULL;
-
-		}
-
-		if (context) {
-
 			((SDLApplication*)currentApplication)->RegisterWindow (this);
 
 		} else {
 
-			printf ("Could not create SDL GL Context: %s.\n", SDL_GetError ());
+			#if defined(IPHONE) || defined(APPLETV)
+			printf ("Could not create SDL GL Context: %s\n", SDL_GetError ());
+			#else
+			SDL_ShowSimpleMessageBox (SDL_MESSAGEBOX_ERROR, "Could not create SDL GL Context", SDL_GetError (), sdlWindow);
+			#endif
+
+			if (sdlWindow) {
+
+				SDL_DestroyWindow (sdlWindow);
+				sdlWindow = 0;
+
+			}
+
+			if (context) {
+
+				SDL_GL_DestroyContext (context);
+				context = 0;
+
+			}
 
 		}
 
@@ -223,6 +237,7 @@ namespace lime {
 		if (context) {
 
 			SDL_GL_DestroyContext (context);
+			context = 0;
 
 		}
 
