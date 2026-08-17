@@ -3832,6 +3832,8 @@ class NativeCFFI
 
 	@:cffi private static function lime_gl_clear_color(red:Float32, green:Float32, blue:Float32, alpha:Float32):Void;
 
+	@:cffi private static function lime_gl_clear_depth(depth:Float32):Void;
+
 	@:cffi private static function lime_gl_clear_depthf(depth:Float32):Void;
 
 	@:cffi private static function lime_gl_clear_stencil(s:Int):Void;
@@ -4370,6 +4372,7 @@ class NativeCFFI
 		"oiiii", false));
 	private static var lime_gl_clear_color = new cpp.Callable<cpp.Float32->cpp.Float32->cpp.Float32->cpp.Float32->cpp.Void>(cpp.Prime._loadPrime("lime",
 		"lime_gl_clear_color", "ffffv", false));
+	private static var lime_gl_clear_depth = new cpp.Callable<cpp.Float32->cpp.Void>(cpp.Prime._loadPrime("lime", "lime_gl_clear_depth", "fv", false));
 	private static var lime_gl_clear_depthf = new cpp.Callable<cpp.Float32->cpp.Void>(cpp.Prime._loadPrime("lime", "lime_gl_clear_depthf", "fv", false));
 	private static var lime_gl_clear_stencil = new cpp.Callable<Int->cpp.Void>(cpp.Prime._loadPrime("lime", "lime_gl_clear_stencil", "iv", false));
 	private static var lime_gl_color_mask = new cpp.Callable<Bool->Bool->Bool->Bool->cpp.Void>(cpp.Prime._loadPrime("lime", "lime_gl_color_mask", "bbbbv",
@@ -4795,6 +4798,7 @@ class NativeCFFI
 	private static var lime_gl_clear_bufferuiv = CFFI.load("lime", "lime_gl_clear_bufferuiv", 3);
 	private static var lime_gl_client_wait_sync = CFFI.load("lime", "lime_gl_client_wait_sync", 4);
 	private static var lime_gl_clear_color = CFFI.load("lime", "lime_gl_clear_color", 4);
+	private static var lime_gl_clear_depth = CFFI.load("lime", "lime_gl_clear_depth", 1);
 	private static var lime_gl_clear_depthf = CFFI.load("lime", "lime_gl_clear_depthf", 1);
 	private static var lime_gl_clear_stencil = CFFI.load("lime", "lime_gl_clear_stencil", 1);
 	private static var lime_gl_color_mask = CFFI.load("lime", "lime_gl_color_mask", 4);
@@ -5110,6 +5114,7 @@ class NativeCFFI
 
 	@:hlNative("lime", "hl_gl_clear_color") private static function lime_gl_clear_color(red:hl.F32, green:hl.F32, blue:hl.F32, alpha:hl.F32):Void {}
 
+	@:hlNative("lime", "hl_gl_clear_depth") private static function lime_gl_clear_depth(depth:hl.F32):Void {}
 	@:hlNative("lime", "hl_gl_clear_depthf") private static function lime_gl_clear_depthf(depth:hl.F32):Void {}
 
 	@:hlNative("lime", "hl_gl_clear_stencil") private static function lime_gl_clear_stencil(s:Int):Void {}
