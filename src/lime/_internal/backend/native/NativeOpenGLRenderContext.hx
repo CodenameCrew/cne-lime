@@ -892,10 +892,21 @@ class NativeOpenGLRenderContext
 		#end
 	}
 
-	public function clearDepthf(depth:Float):Void
+	public function clearDepth(depth:Float):Void
 	{
 		#if (lime_cffi && (lime_opengl || lime_opengles) && !macro)
+		NativeCFFI.lime_gl_clear_depth(depth);
+		#end
+	}
+
+	public function clearDepthf(depth:Float):Void
+	{
+		#if (lime_cffi && lime_opengl && !macro)
+		#if lime_opengles
 		NativeCFFI.lime_gl_clear_depthf(depth);
+		#else
+		NativeCFFI.lime_gl_clear_depth(depth);
+		#end
 		#end
 	}
 

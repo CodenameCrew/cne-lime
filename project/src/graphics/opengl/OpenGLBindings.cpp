@@ -762,6 +762,19 @@ namespace lime {
 	}
 
 
+	void lime_gl_clear_depth (float depth) {
+
+		glClearDepth (depth);
+
+	}
+
+
+	HL_PRIM void HL_NAME(hl_gl_clear_depth) (float depth) {
+
+		glClearDepth (depth);
+
+	}
+
 	void lime_gl_clear_depthf (float depth) {
 
 		glClearDepthf (depth);
@@ -5274,6 +5287,7 @@ namespace lime {
 	DEFINE_PRIME3v (lime_gl_clear_bufferiv);
 	DEFINE_PRIME3v (lime_gl_clear_bufferuiv);
 	DEFINE_PRIME4v (lime_gl_clear_color);
+	DEFINE_PRIME1v (lime_gl_clear_depth);
 	DEFINE_PRIME1v (lime_gl_clear_depthf);
 	DEFINE_PRIME1v (lime_gl_clear_stencil);
 	DEFINE_PRIME4 (lime_gl_client_wait_sync);
