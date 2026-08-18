@@ -29,6 +29,7 @@
 	<define name="lime-opus" if="native" />
 	<define name="lime-vorbis" if="native" />
 	<define name="lime-webgl" if="html5" />
+	<define name="lime-imgui" if="desktop"/>
 
 	<haxedef name="no-compilation" />
 

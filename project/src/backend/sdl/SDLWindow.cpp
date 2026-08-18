@@ -7,11 +7,17 @@
 #include <vector>
 #include <cstring>
 
+#ifdef LIME_IMGUI
+#include "imgui.h"
+#include "imgui_internal.h"
+#include "imgui_impl_sdl3.h"
+#include "imgui_impl_opengl3.h"
+#endif
 
 namespace lime {
 
 
-	static Cursor currentCursor = DEFAULT;
+	Cursor SDLWindow::currentCursor = DEFAULT;
 
 	SDL_Cursor* SDLCursor::arrowCursor = 0;
 	SDL_Cursor* SDLCursor::crosshairCursor = 0;
@@ -132,6 +138,21 @@ namespace lime {
 				OpenGLBindings::defaultRenderbuffer = (int)SDL_GetNumberProperty(props, SDL_PROP_WINDOW_UIKIT_OPENGL_RENDERBUFFER_NUMBER, 0);
 				#endif
 
+				#ifdef LIME_IMGUI
+				IMGUI_CHECKVERSION();
+				ImGui::CreateContext();
+				ImGuiIO& io = ImGui::GetIO();
+				io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+				io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+				io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+				io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+				io.ConfigErrorRecoveryEnableAssert = false;
+
+				// Setup Platform/Renderer backends
+				ImGui_ImplSDL3_InitForOpenGL(sdlWindow, context);
+				ImGui_ImplOpenGL3_Init();
+				#endif
+
 			} else {
 
 				SDL_GL_DestroyContext (context);
@@ -161,6 +182,12 @@ namespace lime {
 
 
 	SDLWindow::~SDLWindow () {
+
+		#if LIME_IMGUI
+		ImGui_ImplOpenGL3_Shutdown();
+		ImGui_ImplSDL3_Shutdown();
+		ImGui::DestroyContext();
+		#endif
 
 		if (sdlWindow) {
 
@@ -290,6 +317,13 @@ namespace lime {
 	void SDLWindow::ContextFlip () {
 
 		if (context) {
+
+			#ifdef LIME_IMGUI
+			if (ImGui::GetCurrentContext()->WithinFrameScope) {
+				ImGui::Render();
+				ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+			}
+			#endif
 
 			SDL_GL_SwapWindow (sdlWindow);
 
@@ -685,6 +719,7 @@ namespace lime {
 				case HIDDEN:
 
 					SDL_HideCursor ();
+					break;
 
 				case CROSSHAIR:
 

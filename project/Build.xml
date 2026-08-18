@@ -35,6 +35,7 @@
 	<!-- <set name="LIME_VPX" value="1" />
 	<set name="LIME_WEBM" value="1" /> -->
 	<set name="LIME_ZLIB" value="1" />
+	<set name="LIME_IMGUI" value="1" if="LIME_SDL" />
 
 	<set name="OUTPUT_DIR" value="../ndll" unless="OUTPUT_DIR" />
 	<set name="NATIVE_TOOLKIT_PATH" value="lib" unless="NATIVE_TOOLKIT_PATH" />
@@ -176,18 +177,18 @@
 
 				<compilerflag value="-I${NATIVE_TOOLKIT_PATH}/vorbis/include/" />
 				<compilerflag value="-DLIME_VORBIS" />
-	
+
 				<file name="src/media/codecs/vorbis/VorbisFile.cpp" />
 				<file name="src/media/codecs/VorbisBindings.cpp" />
 
 			</section>
-			
+
 			<section if="LIME_OPUS">
 
 				<compilerflag value="-I${NATIVE_TOOLKIT_PATH}/opus/include/" />
 				<compilerflag value="-I${NATIVE_TOOLKIT_PATH}/opusfile/include" />
 				<compilerflag value="-DLIME_OPUS" />
-	
+
 				<file name="src/media/codecs/opus/OpusFile.cpp" />
 				<file name="src/media/codecs/OpusBindings.cpp" />
 
@@ -278,6 +279,16 @@
 
 		</section>
 
+		<section if="LIME_IMGUI">
+
+			<compilerflag value="-I${NATIVE_TOOLKIT_PATH}/imgui/" />
+			<compilerflag value="-I${NATIVE_TOOLKIT_PATH}/imgui/backends/" />
+			<compilerflag value="-DLIME_IMGUI" />
+
+			<file name="src/tools/imgui/ImGuiBindings.cpp" />
+
+		</section>
+
 		<file name="src/app/ApplicationEvent.cpp" />
 		<file name="src/graphics/Image.cpp" />
 		<file name="src/graphics/ImageBuffer.cpp" />
@@ -347,6 +358,7 @@
 	<include name="lib/vpx-files.xml" />
 	<include name="lib/webm-files.xml" />
 	<include name="lib/zlib-files.xml" />
+	<include name="lib/imgui-files.xml" />
 
 	<set name="DEBUGEXTRA" value="-debug" if="fulldebug" />
 	<set name="LIBSUFFIX" value="${HX_TARGET_SUFFIX}" if="HX_TARGET_SUFFIX" />
@@ -380,6 +392,7 @@
 		<files id="native-toolkit-vpx" if="LIME_VPX" />
 		<files id="native-toolkit-webm" if="LIME_WEBM" />
 		<files id="native-toolkit-zlib" if="LIME_ZLIB" />
+		<files id="native-toolkit-imgui" if="LIME_IMGUI" />
 
 		<section unless="static_link">
 

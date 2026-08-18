@@ -13,8 +13,38 @@
 
 #include <cmath>
 
+#ifdef LIME_IMGUI
+#include "imgui.h"
+#include "imgui_impl_sdl3.h"
+#include "imgui_impl_opengl3.h"
+#endif
 
 namespace lime {
+
+	#if LIME_IMGUI
+	inline void imguiNewFrame () {
+		ImGui_ImplOpenGL3_NewFrame();
+		ImGuiIO& io = ImGui::GetIO(); (void)io;
+		if (SDLWindow::currentCursor == HIDDEN && !io.WantCaptureMouse) {
+			ImGui::SetMouseCursor(ImGuiMouseCursor_None);
+		}
+		ImGui_ImplSDL3_NewFrame();
+		ImGui::NewFrame();
+	}
+	inline void imguiRender () {
+		ImGui::Render();
+		{
+			ImGuiIO& io = ImGui::GetIO(); (void)io;
+			if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+				SDL_Window* backup_current_window = SDL_GL_GetCurrentWindow();
+				SDL_GLContext backup_current_context = SDL_GL_GetCurrentContext();
+				ImGui::UpdatePlatformWindows();
+				ImGui::RenderPlatformWindowsDefault();
+				SDL_GL_MakeCurrent(backup_current_window, backup_current_context);
+			}
+		}
+	}
+	#endif
 
 
 	AutoGCRoot* Application::callback = 0;
@@ -234,11 +264,20 @@ namespace lime {
 
 			#ifndef EMSCRIPTEN
 			case SDL_EVENT_RENDER_DEVICE_RESET:
+				#ifdef LIME_IMGUI
+				imguiNewFrame();
+				#endif
 				renderEvent.type = RENDER_CONTEXT_LOST;
 				RenderEvent::Dispatch (&renderEvent);
-
+				#ifdef LIME_IMGUI
+				imguiRender();
+				imguiNewFrame();
+				#endif
 				renderEvent.type = RENDER_CONTEXT_RESTORED;
 				RenderEvent::Dispatch (&renderEvent);
+				#ifdef LIME_IMGUI
+				imguiRender();
+				#endif
 				break;
 			#endif
 
@@ -523,6 +562,13 @@ namespace lime {
 
 	void SDLApplication::ProcessKeyEvent (SDL_Event* event) {
 
+		#ifdef LIME_IMGUI
+		ImGuiIO& io = ImGui::GetIO(); (void)io;
+		if (io.WantCaptureKeyboard) {
+			return;
+		}
+		#endif
+
 		if (KeyEvent::callback) {
 
 			switch (event->type) {
@@ -561,6 +607,13 @@ namespace lime {
 
 
 	void SDLApplication::ProcessMouseEvent (SDL_Event* event) {
+
+		#ifdef LIME_IMGUI
+		ImGuiIO& io = ImGui::GetIO(); (void)io;
+		if (io.WantCaptureMouse) {
+			return;
+		}
+		#endif
 
 		if (MouseEvent::callback) {
 
@@ -805,6 +858,10 @@ namespace lime {
 
 		while (SDL_PollEvent (&event)) {
 
+			#ifdef LIME_IMGUI
+			ImGui_ImplSDL3_ProcessEvent(&event);
+			#endif
+
 			HandleEvent (&event);
 
 			if (!active)
@@ -814,6 +871,10 @@ namespace lime {
 
 		if (!inBackground) {
 
+			#ifdef LIME_IMGUI
+			imguiNewFrame();
+			#endif
+
 			applicationEvent.type = UPDATE;
 			applicationEvent.deltaTime = std::fmax (0.0, (double)frameTime.frame / 1e6); // Use the duration of the *previous frame* for deltaTime
 			ApplicationEvent::Dispatch (&applicationEvent);
@@ -821,6 +882,9 @@ namespace lime {
 			renderEvent.type = RENDER;
 			RenderEvent::Dispatch (&renderEvent);
 
+			#ifdef LIME_IMGUI
+			imguiRender();
+			#endif
 		}
 
 		// Measure the total duration of the current frame (update + render)
