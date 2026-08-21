@@ -126,13 +126,13 @@ namespace lime {
 
   void lime_imgui_show_style_selector (HxString label) {
 		#ifdef LIME_IMGUI
-		ImGui::ShowStyleSelector(label.__s);
+		ImGui::ShowStyleSelector(hxs_utf8(label, nullptr));
 		#endif
 	}
 
   void lime_imgui_show_font_selector (HxString label) {
 		#ifdef LIME_IMGUI
-		ImGui::ShowFontSelector(label.__s);
+		ImGui::ShowFontSelector(hxs_utf8(label, nullptr));
 		#endif
 	}
 
@@ -151,7 +151,7 @@ namespace lime {
 
 	bool lime_imgui_begin (HxString name, value p_open, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::Begin(name.__s, (bool*)val_data (p_open), flags);
+		return ImGui::Begin(hxs_utf8(name, nullptr), (bool*)val_data (p_open), flags);
 		#endif
 		return false;
 	}
@@ -164,7 +164,7 @@ namespace lime {
 
 	bool lime_imgui_begin_child (HxString str_id, float width, float height, int childFlags, int windowFlags) {
 		#ifdef LIME_IMGUI
-		return ImGui::BeginChild(str_id.__s, ImVec2(width, height), childFlags, windowFlags);
+		return ImGui::BeginChild(hxs_utf8(str_id, nullptr), ImVec2(width, height), childFlags, windowFlags);
 		#endif
 		return false;
 	}
@@ -335,25 +335,25 @@ namespace lime {
 
     void lime_imgui_set_named_window_pos (HxString name, float posX, float posY, int cond) {
 		#ifdef LIME_IMGUI
-		ImGui::SetWindowPos(name.__s, ImVec2(posX, posY), cond);
+		ImGui::SetWindowPos(hxs_utf8(name, nullptr), ImVec2(posX, posY), cond);
 		#endif
 	}
 
     void lime_imgui_set_named_window_size (HxString name, float width, float height, int cond) {
 		#ifdef LIME_IMGUI
-		ImGui::SetWindowSize(name.__s, ImVec2(width, height), cond);
+		ImGui::SetWindowSize(hxs_utf8(name, nullptr), ImVec2(width, height), cond);
 		#endif
 	}
 
     void lime_imgui_set_named_window_collapsed (HxString name, bool collapsed, int cond) {
 		#ifdef LIME_IMGUI
-		ImGui::SetWindowCollapsed(name.__s, collapsed, cond);
+		ImGui::SetWindowCollapsed(hxs_utf8(name, nullptr), collapsed, cond);
 		#endif
 	}
 
     void lime_imgui_set_named_window_focus (HxString name) {
 		#ifdef LIME_IMGUI
-		ImGui::SetWindowFocus(name.__s);
+		ImGui::SetWindowFocus(hxs_utf8(name, nullptr));
 		#endif
 	}
 
@@ -695,13 +695,13 @@ namespace lime {
 
   void lime_imgui_push_id_str (HxString str_id) {
 		#ifdef LIME_IMGUI
-		ImGui::PushID(str_id.__s);
+		ImGui::PushID(hxs_utf8(str_id, nullptr));
 		#endif
 	}
 
   void lime_imgui_push_id_str2 (HxString begin, HxString end) {
 		#ifdef LIME_IMGUI
-		ImGui::PushID(begin.__s, end.__s);
+		ImGui::PushID(hxs_utf8(begin, nullptr), hxs_utf8(end, nullptr));
 		#endif
 	}
 
@@ -719,7 +719,7 @@ namespace lime {
 
   int lime_imgui_get_id_str (HxString str_id) {
 		#ifdef LIME_IMGUI
-    unsigned int id = ImGui::GetID(str_id.__s);
+    unsigned int id = ImGui::GetID(hxs_utf8(str_id, nullptr));
 		return id;
 		#endif
     return 0;
@@ -727,7 +727,7 @@ namespace lime {
 
   int lime_imgui_get_id_str2 (HxString begin, HxString end) {
 		#ifdef LIME_IMGUI
-    unsigned int id = ImGui::GetID(begin.__s, end.__s);
+    unsigned int id = ImGui::GetID(hxs_utf8(begin, nullptr), hxs_utf8(end, nullptr));
 		return id;
 		#endif
     return 0;
@@ -743,104 +743,104 @@ namespace lime {
 
   void lime_imgui_text_unformatted (HxString text, HxString textEnd) {
 		#ifdef LIME_IMGUI
-		ImGui::TextUnformatted(text.__s, textEnd.__s);
+		ImGui::TextUnformatted(hxs_utf8(text, nullptr), hxs_utf8(textEnd, nullptr));
 		#endif
 	}
 
 	void lime_imgui_text (HxString text) {
 		#ifdef LIME_IMGUI
-		ImGui::Text(text.__s);
+		ImGui::Text(hxs_utf8(text, nullptr));
 		#endif
 	}
 
   void lime_imgui_text_colored (int col, HxString text) {
 		#ifdef LIME_IMGUI
-		ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(col), text.__s);
+		ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(col), hxs_utf8(text, nullptr));
 		#endif
 	}
 
 	void lime_imgui_text_disabled (HxString text) {
 		#ifdef LIME_IMGUI
-		ImGui::TextDisabled(text.__s);
+		ImGui::TextDisabled(hxs_utf8(text, nullptr));
 		#endif
 	}
 
 	void lime_imgui_text_wrapped (HxString text) {
 		#ifdef LIME_IMGUI
-		ImGui::TextWrapped(text.__s);
+		ImGui::TextWrapped(hxs_utf8(text, nullptr));
 		#endif
 	}
 
 	void lime_imgui_label_text (HxString text, HxString format) {
 		#ifdef LIME_IMGUI
-		ImGui::LabelText(text.__s, format.__s);
+		ImGui::LabelText(hxs_utf8(text, nullptr), hxs_utf8(format, nullptr));
 		#endif
 	}
 
 	void lime_imgui_bullet_text (HxString text) {
 		#ifdef LIME_IMGUI
-		ImGui::BulletText(text.__s);
+		ImGui::BulletText(hxs_utf8(text, nullptr));
 		#endif
 	}
 
 	void lime_imgui_separator_text (HxString text) {
 		#ifdef LIME_IMGUI
-		ImGui::SeparatorText(text.__s);
+		ImGui::SeparatorText(hxs_utf8(text, nullptr));
 		#endif
 	}
 
 	bool lime_imgui_button (HxString label, float width, float height) {
 		#ifdef LIME_IMGUI
-		return ImGui::Button(label.__s, ImVec2(width, height));
+		return ImGui::Button(hxs_utf8(label, nullptr), ImVec2(width, height));
 		#endif
 		return false;
 	}
 
 	bool lime_imgui_small_button (HxString label) {
 		#ifdef LIME_IMGUI
-		return ImGui::SmallButton(label.__s);
+		return ImGui::SmallButton(hxs_utf8(label, nullptr));
 		#endif
 		return false;
 	}
 
   bool lime_imgui_invisible_button (HxString str_id, float width, float height, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::InvisibleButton(str_id.__s, ImVec2(width, height), flags);
+		return ImGui::InvisibleButton(hxs_utf8(str_id, nullptr), ImVec2(width, height), flags);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_arrow_button (HxString str_id, int dir) {
 		#ifdef LIME_IMGUI
-		return ImGui::ArrowButton(str_id.__s, (ImGuiDir)dir);
+		return ImGui::ArrowButton(hxs_utf8(str_id, nullptr), (ImGuiDir)dir);
 		#endif
 		return false;
 	}
 
 	bool lime_imgui_checkbox (HxString label, value v) {
 		#ifdef LIME_IMGUI
-		return ImGui::Checkbox(label.__s, (bool*)val_data (v));
+		return ImGui::Checkbox(hxs_utf8(label, nullptr), (bool*)val_data (v));
 		#endif
 		return false;
 	}
 
   bool lime_imgui_checkbox_flags (HxString label, value v, int flag) {
 		#ifdef LIME_IMGUI
-		return ImGui::CheckboxFlags(label.__s, (int*)val_data (v), flag);
+		return ImGui::CheckboxFlags(hxs_utf8(label, nullptr), (int*)val_data (v), flag);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_radio_button (HxString label, value v, int v_button) {
 		#ifdef LIME_IMGUI
-		return ImGui::RadioButton(label.__s, (int*)val_data (v), v_button);
+		return ImGui::RadioButton(hxs_utf8(label, nullptr), (int*)val_data (v), v_button);
 		#endif
 		return false;
 	}
 
   void lime_imgui_progress_bar (float fraction, float sizeX, float sizeY, HxString overlay) {
 		#ifdef LIME_IMGUI
-		ImGui::ProgressBar(fraction, ImVec2(sizeX, sizeY), overlay.__s);
+		ImGui::ProgressBar(fraction, ImVec2(sizeX, sizeY), hxs_utf8(overlay, nullptr));
 		#endif
 	}
 
@@ -852,14 +852,14 @@ namespace lime {
 
   bool lime_imgui_text_link (HxString label) {
 		#ifdef LIME_IMGUI
-		return ImGui::TextLink(label.__s);
+		return ImGui::TextLink(hxs_utf8(label, nullptr));
 		#endif
 		return false;
 	}
 
   bool lime_imgui_text_link_open_url (HxString label, HxString url) {
 		#ifdef LIME_IMGUI
-		return ImGui::TextLinkOpenURL(label.__s, url.__s);
+		return ImGui::TextLinkOpenURL(hxs_utf8(label, nullptr), hxs_utf8(url, nullptr));
 		#endif
 		return false;
 	}
@@ -877,14 +877,14 @@ namespace lime {
 	}
 	bool lime_imgui_image_button(HxString str_id, int tex_ref, float image_sizeX, float image_sizeY, float uv0X, float uv0Y, float uv1X, float uv1Y, int bg_col, int tint_col){
 		#ifdef LIME_IMGUI
-		return ImGui::ImageButton(str_id.__s, (ImTextureID)(intptr_t)tex_ref, ImVec2(image_sizeX, image_sizeY), ImVec2(uv0X, uv0Y), ImVec2(uv1X, uv1Y), ImGui::ColorConvertU32ToFloat4(bg_col), ImGui::ColorConvertU32ToFloat4(tint_col));
+		return ImGui::ImageButton(hxs_utf8(str_id, nullptr), (ImTextureID)(intptr_t)tex_ref, ImVec2(image_sizeX, image_sizeY), ImVec2(uv0X, uv0Y), ImVec2(uv1X, uv1Y), ImGui::ColorConvertU32ToFloat4(bg_col), ImGui::ColorConvertU32ToFloat4(tint_col));
 		#endif
 		return false;
 	}
 
 	bool lime_imgui_begin_combo(HxString label, HxString preview_value, int flags){
         #ifdef LIME_IMGUI
-        return ImGui::BeginCombo(label.__s, preview_value.__s, flags);
+        return ImGui::BeginCombo(hxs_utf8(label, nullptr), hxs_utf8(preview_value, nullptr), flags);
         #endif
         return false;
 	}
@@ -898,154 +898,154 @@ namespace lime {
 		#ifdef LIME_IMGUI
 		ImVector<const char*> itemsCStr;
 		fillStringVectorFromHXArray(itemsCStr, items);
-		return ImGui::Combo(label.__s, (int*)val_data (current_item), itemsCStr.Data, itemsCStr.Size, maxHeight);
+		return ImGui::Combo(hxs_utf8(label, nullptr), (int*)val_data (current_item), itemsCStr.Data, itemsCStr.Size, maxHeight);
 		#endif
 		return false;
 	}
 
     bool lime_imgui_drag_float (HxString label, value v, float v_speed, float v_min, float v_max, HxString format, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::DragFloat(label.__s, (float*)val_data (v), v_speed, v_min, v_max, format.__s, flags);
+		return ImGui::DragFloat(hxs_utf8(label, nullptr), (float*)val_data (v), v_speed, v_min, v_max, hxs_utf8(format, nullptr), flags);
 		#endif
 		return false;
 	}
 
     bool lime_imgui_drag_float2 (HxString label, value v, float v_speed, float v_min, float v_max, HxString format, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::DragFloat2(label.__s, (float*)val_data (v), v_speed, v_min, v_max, format.__s, flags);
+		return ImGui::DragFloat2(hxs_utf8(label, nullptr), (float*)val_data (v), v_speed, v_min, v_max, hxs_utf8(format, nullptr), flags);
 		#endif
 		return false;
 	}
 
     bool lime_imgui_drag_float3 (HxString label, value v, float v_speed, float v_min, float v_max, HxString format, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::DragFloat3(label.__s, (float*)val_data (v), v_speed, v_min, v_max, format.__s, flags);
+		return ImGui::DragFloat3(hxs_utf8(label, nullptr), (float*)val_data (v), v_speed, v_min, v_max, hxs_utf8(format, nullptr), flags);
 		#endif
 		return false;
 	}
 
     bool lime_imgui_drag_float4 (HxString label, value v, float v_speed, float v_min, float v_max, HxString format, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::DragFloat4(label.__s, (float*)val_data (v), v_speed, v_min, v_max, format.__s, flags);
+		return ImGui::DragFloat4(hxs_utf8(label, nullptr), (float*)val_data (v), v_speed, v_min, v_max, hxs_utf8(format, nullptr), flags);
 		#endif
 		return false;
 	}
 
     bool lime_imgui_drag_float_range2 (HxString label, value v_current_min, value v_current_max, float v_speed, float v_min, float v_max, HxString format, HxString format_max, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::DragFloatRange2(label.__s, (float*)val_data (v_current_min), (float*)val_data (v_current_max), v_speed, v_min, v_max, format.__s, format_max.__s, flags);
+		return ImGui::DragFloatRange2(hxs_utf8(label, nullptr), (float*)val_data (v_current_min), (float*)val_data (v_current_max), v_speed, v_min, v_max, hxs_utf8(format, nullptr), hxs_utf8(format_max, nullptr), flags);
 		#endif
 		return false;
 	}
 
     bool lime_imgui_drag_int (HxString label, value v, float v_speed, int v_min, int v_max, HxString format, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::DragInt(label.__s, (int*)val_data (v), v_speed, v_min, v_max, format.__s, flags);
+		return ImGui::DragInt(hxs_utf8(label, nullptr), (int*)val_data (v), v_speed, v_min, v_max, hxs_utf8(format, nullptr), flags);
 		#endif
 		return false;
 	}
 
     bool lime_imgui_drag_int2 (HxString label, value v, float v_speed, int v_min, int v_max, HxString format, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::DragInt2(label.__s, (int*)val_data (v), v_speed, v_min, v_max, format.__s, flags);
+		return ImGui::DragInt2(hxs_utf8(label, nullptr), (int*)val_data (v), v_speed, v_min, v_max, hxs_utf8(format, nullptr), flags);
 		#endif
 		return false;
 	}
 
     bool lime_imgui_drag_int3 (HxString label, value v, float v_speed, int v_min, int v_max, HxString format, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::DragInt3(label.__s, (int*)val_data (v), v_speed, v_min, v_max, format.__s, flags);
+		return ImGui::DragInt3(hxs_utf8(label, nullptr), (int*)val_data (v), v_speed, v_min, v_max, hxs_utf8(format, nullptr), flags);
 		#endif
 		return false;
 	}
 
     bool lime_imgui_drag_int4 (HxString label, value v, float v_speed, int v_min, int v_max, HxString format, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::DragInt4(label.__s, (int*)val_data (v), v_speed, v_min, v_max, format.__s, flags);
+		return ImGui::DragInt4(hxs_utf8(label, nullptr), (int*)val_data (v), v_speed, v_min, v_max, hxs_utf8(format, nullptr), flags);
 		#endif
 		return false;
 	}
 
     bool lime_imgui_drag_int_range2 (HxString label, value v_current_min, value v_current_max, float v_speed, int v_min, int v_max, HxString format, HxString format_max, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::DragIntRange2(label.__s, (int*)val_data (v_current_min), (int*)val_data (v_current_max), v_speed, v_min, v_max, format.__s, format_max.__s, flags);
+		return ImGui::DragIntRange2(hxs_utf8(label, nullptr), (int*)val_data (v_current_min), (int*)val_data (v_current_max), v_speed, v_min, v_max, hxs_utf8(format, nullptr), hxs_utf8(format_max, nullptr), flags);
 		#endif
 		return false;
 	}
   
   bool lime_imgui_slider_float (HxString label, value v, float v_min, float v_max, HxString format, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::SliderFloat(label.__s, (float*)val_data (v), v_min, v_max, format.__s, flags);
+		return ImGui::SliderFloat(hxs_utf8(label, nullptr), (float*)val_data (v), v_min, v_max, hxs_utf8(format, nullptr), flags);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_slider_float2 (HxString label, value v, float v_min, float v_max, HxString format, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::SliderFloat2(label.__s, (float*)val_data (v), v_min, v_max, format.__s, flags);
+		return ImGui::SliderFloat2(hxs_utf8(label, nullptr), (float*)val_data (v), v_min, v_max, hxs_utf8(format, nullptr), flags);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_slider_float3 (HxString label, value v, float v_min, float v_max, HxString format, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::SliderFloat3(label.__s, (float*)val_data (v), v_min, v_max, format.__s, flags);
+		return ImGui::SliderFloat3(hxs_utf8(label, nullptr), (float*)val_data (v), v_min, v_max, hxs_utf8(format, nullptr), flags);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_slider_float4 (HxString label, value v, float v_min, float v_max, HxString format, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::SliderFloat4(label.__s, (float*)val_data (v), v_min, v_max, format.__s, flags);
+		return ImGui::SliderFloat4(hxs_utf8(label, nullptr), (float*)val_data (v), v_min, v_max, hxs_utf8(format, nullptr), flags);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_slider_angle (HxString label, value v, float v_min, float v_max, HxString format, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::SliderAngle(label.__s, (float*)val_data (v), v_min, v_max, format.__s, flags);
+		return ImGui::SliderAngle(hxs_utf8(label, nullptr), (float*)val_data (v), v_min, v_max, hxs_utf8(format, nullptr), flags);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_slider_int (HxString label, value v, int v_min, int v_max, HxString format, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::SliderInt(label.__s, (int*)val_data (v), v_min, v_max, format.__s, flags);
+		return ImGui::SliderInt(hxs_utf8(label, nullptr), (int*)val_data (v), v_min, v_max, hxs_utf8(format, nullptr), flags);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_slider_int2 (HxString label, value v, int v_min, int v_max, HxString format, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::SliderInt2(label.__s, (int*)val_data (v), v_min, v_max, format.__s, flags);
+		return ImGui::SliderInt2(hxs_utf8(label, nullptr), (int*)val_data (v), v_min, v_max, hxs_utf8(format, nullptr), flags);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_slider_int3 (HxString label, value v, int v_min, int v_max, HxString format, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::SliderInt3(label.__s, (int*)val_data (v), v_min, v_max, format.__s, flags);
+		return ImGui::SliderInt3(hxs_utf8(label, nullptr), (int*)val_data (v), v_min, v_max, hxs_utf8(format, nullptr), flags);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_slider_int4 (HxString label, value v, int v_min, int v_max, HxString format, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::SliderInt4(label.__s, (int*)val_data (v), v_min, v_max, format.__s, flags);
+		return ImGui::SliderInt4(hxs_utf8(label, nullptr), (int*)val_data (v), v_min, v_max, hxs_utf8(format, nullptr), flags);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_vslider_float (HxString label, float width, float height, value v, float v_min, float v_max, HxString format, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::VSliderFloat(label.__s, ImVec2(width, height), (float*)val_data (v), v_min, v_max, format.__s, flags);
+		return ImGui::VSliderFloat(hxs_utf8(label, nullptr), ImVec2(width, height), (float*)val_data (v), v_min, v_max, hxs_utf8(format, nullptr), flags);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_vslider_int (HxString label, float width, float height, value v, int v_min, int v_max, HxString format, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::VSliderInt(label.__s, ImVec2(width, height), (int*)val_data (v), v_min, v_max, format.__s, flags);
+		return ImGui::VSliderInt(hxs_utf8(label, nullptr), ImVec2(width, height), (int*)val_data (v), v_min, v_max, hxs_utf8(format, nullptr), flags);
 		#endif
 		return false;
 	}
@@ -1060,7 +1060,7 @@ namespace lime {
 	if (callback != nullptr && !val_is_null(callback)) {
 		cb_user_data.Callback = (value*)val_data(callback);
 	}
-    return ImGui::InputText(label.__s, (char*)str->__s, str->length + 1, flags, InputTextCallback, &cb_user_data);
+    return ImGui::InputText(hxs_utf8(label, nullptr), (char*)str->__s, str->length + 1, flags, InputTextCallback, &cb_user_data);
 		#endif
 		return false;
 	}
@@ -1075,7 +1075,7 @@ namespace lime {
 	if (callback != nullptr && !val_is_null(callback)) {
 		cb_user_data.Callback = (value*)val_data(callback);
 	}
-    return ImGui::InputTextMultiline(label.__s, (char*)str->__s, str->length + 1, ImVec2(width, height), flags, InputTextCallback, &cb_user_data);
+    return ImGui::InputTextMultiline(hxs_utf8(label, nullptr), (char*)str->__s, str->length + 1, ImVec2(width, height), flags, InputTextCallback, &cb_user_data);
 		#endif
 		return false;
 	}
@@ -1090,98 +1090,98 @@ namespace lime {
 	if (callback != nullptr && !val_is_null(callback)) {
 		cb_user_data.Callback = (value*)val_data(callback);
 	}
-    return ImGui::InputTextWithHint(label.__s, hint.__s, (char*)str->__s, str->length + 1, flags, InputTextCallback, &cb_user_data);
+    return ImGui::InputTextWithHint(hxs_utf8(label, nullptr), hxs_utf8(hint, nullptr), (char*)str->__s, str->length + 1, flags, InputTextCallback, &cb_user_data);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_input_float (HxString label, value v, float step, float step_fast, HxString format, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::InputFloat(label.__s, (float*)val_data (v), step, step_fast, format.__s, flags);
+		return ImGui::InputFloat(hxs_utf8(label, nullptr), (float*)val_data (v), step, step_fast, hxs_utf8(format, nullptr), flags);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_input_float2 (HxString label, value v, HxString format, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::InputFloat2(label.__s, (float*)val_data (v), format.__s, flags);
+		return ImGui::InputFloat2(hxs_utf8(label, nullptr), (float*)val_data (v), hxs_utf8(format, nullptr), flags);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_input_float3 (HxString label, value v, HxString format, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::InputFloat3(label.__s, (float*)val_data (v), format.__s, flags);
+		return ImGui::InputFloat3(hxs_utf8(label, nullptr), (float*)val_data (v), hxs_utf8(format, nullptr), flags);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_input_float4 (HxString label, value v, HxString format, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::InputFloat4(label.__s, (float*)val_data (v), format.__s, flags);
+		return ImGui::InputFloat4(hxs_utf8(label, nullptr), (float*)val_data (v), hxs_utf8(format, nullptr), flags);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_input_int (HxString label, value v, int step, int step_fast, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::InputInt(label.__s, (int*)val_data (v), step, step_fast, flags);
+		return ImGui::InputInt(hxs_utf8(label, nullptr), (int*)val_data (v), step, step_fast, flags);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_input_int2 (HxString label, value v, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::InputInt2(label.__s, (int*)val_data (v), flags);
+		return ImGui::InputInt2(hxs_utf8(label, nullptr), (int*)val_data (v), flags);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_input_int3 (HxString label, value v, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::InputInt3(label.__s, (int*)val_data (v), flags);
+		return ImGui::InputInt3(hxs_utf8(label, nullptr), (int*)val_data (v), flags);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_input_int4 (HxString label, value v, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::InputInt4(label.__s, (int*)val_data (v), flags);
+		return ImGui::InputInt4(hxs_utf8(label, nullptr), (int*)val_data (v), flags);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_color_edit3 (HxString label, value v, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::ColorEdit3(label.__s, (float*)val_data (v), flags);
+		return ImGui::ColorEdit3(hxs_utf8(label, nullptr), (float*)val_data (v), flags);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_color_edit4 (HxString label, value v, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::ColorEdit4(label.__s, (float*)val_data (v), flags);
+		return ImGui::ColorEdit4(hxs_utf8(label, nullptr), (float*)val_data (v), flags);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_color_picker3 (HxString label, value v, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::ColorPicker3(label.__s, (float*)val_data (v), flags);
+		return ImGui::ColorPicker3(hxs_utf8(label, nullptr), (float*)val_data (v), flags);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_color_picker4 (HxString label, value v, int flags) {
 		#ifdef LIME_IMGUI
-		return ImGui::ColorPicker4(label.__s, (float*)val_data (v), flags);
+		return ImGui::ColorPicker4(hxs_utf8(label, nullptr), (float*)val_data (v), flags);
 		#endif
 		return false;
 	}
 
   bool lime_imgui_color_button (HxString desc_id, int col, int flags, float width, float height) {
 		#ifdef LIME_IMGUI
-		return ImGui::ColorButton(desc_id.__s, ImGui::ColorConvertU32ToFloat4(col), flags, ImVec2(width, height));
+		return ImGui::ColorButton(hxs_utf8(desc_id, nullptr), ImGui::ColorConvertU32ToFloat4(col), flags, ImVec2(width, height));
 		#endif
 		return false;
 	}
@@ -1193,19 +1193,19 @@ namespace lime {
 	}
 	bool lime_imgui_tree_node(HxString str_id, HxString fmt){
 		#ifdef LIME_IMGUI
-		return ImGui::TreeNode(str_id.__s, fmt.__s);
+		return ImGui::TreeNode(hxs_utf8(str_id, nullptr), hxs_utf8(fmt, nullptr));
 		#endif
 		return false;
 	}
 	bool lime_imgui_tree_node_ex(HxString str_id, int flags, HxString fmt){
 		#ifdef LIME_IMGUI
-		return ImGui::TreeNodeEx(str_id.__s, flags, fmt.__s);
+		return ImGui::TreeNodeEx(hxs_utf8(str_id, nullptr), flags, hxs_utf8(fmt, nullptr));
 		#endif
 		return false;
 	}
 	void lime_imgui_tree_push(HxString str_id){
 		#ifdef LIME_IMGUI
-		ImGui::TreePush(str_id.__s);
+		ImGui::TreePush(hxs_utf8(str_id, nullptr));
 		#endif
 	}
 	void lime_imgui_tree_pop(){
@@ -1221,7 +1221,7 @@ namespace lime {
 	}
 	bool lime_imgui_collapsing_header(HxString label, value p_visible, int flags){
 		#ifdef LIME_IMGUI
-		return ImGui::CollapsingHeader(label.__s, (bool*)val_data (p_visible), flags);
+		return ImGui::CollapsingHeader(hxs_utf8(label, nullptr), (bool*)val_data (p_visible), flags);
 		#endif
 		return false;
 	}
@@ -1244,20 +1244,20 @@ namespace lime {
 
 	bool lime_imgui_selectable(HxString label, bool selected){
         #ifdef LIME_IMGUI
-        return ImGui::Selectable(label.__s, selected);
+        return ImGui::Selectable(hxs_utf8(label, nullptr), selected);
         #endif
         return false;
 	}
 	bool lime_imgui_selectable_with_ptr(HxString label, value p_selected, int flags){
 		#ifdef LIME_IMGUI
-		return ImGui::Selectable(label.__s, (bool*)val_data (p_selected), flags);
+		return ImGui::Selectable(hxs_utf8(label, nullptr), (bool*)val_data (p_selected), flags);
 		#endif
 		return false;
 	}
 
 	bool lime_imgui_begin_list_box(HxString label, float sizeX, float sizeY){
 		#ifdef LIME_IMGUI
-		return ImGui::BeginListBox(label.__s, ImVec2(sizeX, sizeY));
+		return ImGui::BeginListBox(hxs_utf8(label, nullptr), ImVec2(sizeX, sizeY));
 		#endif
 		return false;
 	}
@@ -1270,7 +1270,7 @@ namespace lime {
 		#ifdef LIME_IMGUI
 		ImVector<const char*> itemsCStr;
 		fillStringVectorFromHXArray(itemsCStr, items);
-		return ImGui::ListBox(label.__s, (int*)val_data (current_item), itemsCStr.Data, itemsCStr.Size, height_in_items);
+		return ImGui::ListBox(hxs_utf8(label, nullptr), (int*)val_data (current_item), itemsCStr.Data, itemsCStr.Size, height_in_items);
 		#endif
 		return false;
 	}
@@ -1278,14 +1278,14 @@ namespace lime {
 		#ifdef LIME_IMGUI
 		ImVector<float> valuesFloat;
 		fillFloatVectorFromHXArray(valuesFloat, values);
-		ImGui::PlotLines(label.__s, valuesFloat.Data, values_count, values_offset, overlay_text.__s, scale_min, scale_max, ImVec2(graph_sizeX, graph_sizeY), stride);
+		ImGui::PlotLines(hxs_utf8(label, nullptr), valuesFloat.Data, values_count, values_offset, hxs_utf8(overlay_text, nullptr), scale_min, scale_max, ImVec2(graph_sizeX, graph_sizeY), stride);
 		#endif
 	}
 	void lime_imgui_plot_histogram(HxString label, value values, int values_count, int values_offset, HxString overlay_text, float scale_min, float scale_max, float graph_sizeX, float graph_sizeY, int stride){
 		#ifdef LIME_IMGUI
 		ImVector<float> valuesFloat;
 		fillFloatVectorFromHXArray(valuesFloat, values);
-		ImGui::PlotHistogram(label.__s, valuesFloat.Data, values_count, values_offset, overlay_text.__s, scale_min, scale_max, ImVec2(graph_sizeX, graph_sizeY), stride);
+		ImGui::PlotHistogram(hxs_utf8(label, nullptr), valuesFloat.Data, values_count, values_offset, hxs_utf8(overlay_text, nullptr), scale_min, scale_max, ImVec2(graph_sizeX, graph_sizeY), stride);
 		#endif
 	}
 
@@ -1313,7 +1313,7 @@ namespace lime {
 	}
 	bool lime_imgui_begin_menu(HxString label, bool enabled){
 		#ifdef LIME_IMGUI
-		return ImGui::BeginMenu(label.__s, enabled);
+		return ImGui::BeginMenu(hxs_utf8(label, nullptr), enabled);
 		#endif
 		return false;
 	}
@@ -1324,13 +1324,13 @@ namespace lime {
 	}
 	bool lime_imgui_menu_item(HxString label, HxString shortcut, bool selected, bool enabled){
 		#ifdef LIME_IMGUI
-		return ImGui::MenuItem(label.__s, shortcut.__s, selected, enabled);
+		return ImGui::MenuItem(hxs_utf8(label, nullptr), hxs_utf8(shortcut, nullptr), selected, enabled);
 		#endif
 		return false;
 	}
 	bool lime_imgui_menu_item_with_toggle(HxString label, HxString shortcut, value p_selected, bool enabled){
 		#ifdef LIME_IMGUI
-		return ImGui::MenuItem(label.__s, shortcut.__s, (bool*)val_data (p_selected), enabled);
+		return ImGui::MenuItem(hxs_utf8(label, nullptr), hxs_utf8(shortcut, nullptr), (bool*)val_data (p_selected), enabled);
 		#endif
 		return false;
 	}
@@ -1347,7 +1347,7 @@ namespace lime {
 	}
 	void lime_imgui_set_tooltip(HxString fmt){
 		#ifdef LIME_IMGUI
-		ImGui::SetTooltip(fmt.__s);
+		ImGui::SetTooltip(hxs_utf8(fmt, nullptr));
 		#endif
 	}
 	bool lime_imgui_begin_item_tooltip(){
@@ -1358,19 +1358,19 @@ namespace lime {
 	}
 	void lime_imgui_set_item_tooltip(HxString fmt){
 		#ifdef LIME_IMGUI
-		ImGui::SetItemTooltip(fmt.__s);
+		ImGui::SetItemTooltip(hxs_utf8(fmt, nullptr));
 		#endif
 	}
 
 	bool lime_imgui_begin_popup(HxString str_id, int flags){
 		#ifdef LIME_IMGUI
-		return ImGui::BeginPopup(str_id.__s, flags);
+		return ImGui::BeginPopup(hxs_utf8(str_id, nullptr), flags);
 		#endif
 		return false;
 	}
 	bool lime_imgui_begin_popup_modal(HxString name, value p_open, int flags){
 		#ifdef LIME_IMGUI
-		return ImGui::BeginPopupModal(name.__s, (bool*)val_data (p_open), flags);
+		return ImGui::BeginPopupModal(hxs_utf8(name, nullptr), (bool*)val_data (p_open), flags);
 		#endif
 		return false;
 	}
@@ -1381,12 +1381,12 @@ namespace lime {
 	}
 	void lime_imgui_open_popup(HxString str_id, int popup_flags){
 		#ifdef LIME_IMGUI
-		ImGui::OpenPopup(str_id.__s, popup_flags);
+		ImGui::OpenPopup(hxs_utf8(str_id, nullptr), popup_flags);
 		#endif
 	}
 	void lime_imgui_open_popup_on_item_click(HxString str_id, int popup_flags){
 		#ifdef LIME_IMGUI
-		ImGui::OpenPopupOnItemClick(str_id.__s, popup_flags);
+		ImGui::OpenPopupOnItemClick(hxs_utf8(str_id, nullptr), popup_flags);
 		#endif
 	}
 	void lime_imgui_close_current_popup(){
@@ -1396,32 +1396,32 @@ namespace lime {
 	}
 	bool lime_imgui_begin_popup_context_item(HxString str_id, int popup_flags){
 		#ifdef LIME_IMGUI
-		return ImGui::BeginPopupContextItem(str_id.__s, popup_flags);
+		return ImGui::BeginPopupContextItem(hxs_utf8(str_id, nullptr), popup_flags);
 		#endif
 		return false;
 	}
 	bool lime_imgui_begin_popup_context_window(HxString str_id, int popup_flags){
 		#ifdef LIME_IMGUI
-		return ImGui::BeginPopupContextWindow(str_id.__s, popup_flags);
+		return ImGui::BeginPopupContextWindow(hxs_utf8(str_id, nullptr), popup_flags);
 		#endif
 		return false;
 	}
 	bool lime_imgui_begin_popup_context_void(HxString str_id, int popup_flags){
 		#ifdef LIME_IMGUI
-		return ImGui::BeginPopupContextVoid(str_id.__s, popup_flags);
+		return ImGui::BeginPopupContextVoid(hxs_utf8(str_id, nullptr), popup_flags);
 		#endif
 		return false;
 	}
 	bool lime_imgui_is_popup_open(HxString str_id, int flags){
 		#ifdef LIME_IMGUI
-		return ImGui::IsPopupOpen(str_id.__s, flags);
+		return ImGui::IsPopupOpen(hxs_utf8(str_id, nullptr), flags);
 		#endif
 		return false;
 	}
 
 	bool lime_imgui_begin_table(HxString str_id, int columns, int flags, float outer_sizeX, float outer_sizeY, float inner_width){
 		#ifdef LIME_IMGUI
-		return ImGui::BeginTable(str_id.__s, columns, flags, ImVec2(outer_sizeX, outer_sizeY), inner_width);
+		return ImGui::BeginTable(hxs_utf8(str_id, nullptr), columns, flags, ImVec2(outer_sizeX, outer_sizeY), inner_width);
 		#endif
 		return false;
 	}
@@ -1449,7 +1449,7 @@ namespace lime {
 	}
 	void lime_imgui_table_setup_column(HxString label, int flags, float init_width_or_weight, int user_id){
 		#ifdef LIME_IMGUI
-		ImGui::TableSetupColumn(label.__s, flags, init_width_or_weight, user_id);
+		ImGui::TableSetupColumn(hxs_utf8(label, nullptr), flags, init_width_or_weight, user_id);
 		#endif
 	}
 	void lime_imgui_table_setup_scroll_freeze(int cols, int rows){
@@ -1459,7 +1459,7 @@ namespace lime {
 	}
 	void lime_imgui_table_header(HxString label){
 		#ifdef LIME_IMGUI
-		ImGui::TableHeader(label.__s);
+		ImGui::TableHeader(hxs_utf8(label, nullptr));
 		#endif
 	}
 	void lime_imgui_table_headers_row(){
@@ -1527,7 +1527,7 @@ namespace lime {
 
 	void lime_imgui_columns(int count, HxString id, bool borders){
 		#ifdef LIME_IMGUI
-		ImGui::Columns(count, id.__s, borders);
+		ImGui::Columns(count, hxs_utf8(id, nullptr), borders);
 		#endif
 	}
 	void lime_imgui_next_column(){
@@ -1571,7 +1571,7 @@ namespace lime {
 	}
 	bool lime_imgui_begin_tab_bar(HxString str_id, int flags){
 		#ifdef LIME_IMGUI
-		return ImGui::BeginTabBar(str_id.__s, flags);
+		return ImGui::BeginTabBar(hxs_utf8(str_id, nullptr), flags);
 		#endif
 		return false;
 	}
@@ -1582,7 +1582,7 @@ namespace lime {
 	}
 	bool lime_imgui_begin_tab_item(HxString label, value p_open, int flags){
 		#ifdef LIME_IMGUI
-		return ImGui::BeginTabItem(label.__s, (bool*)val_data(p_open), flags);
+		return ImGui::BeginTabItem(hxs_utf8(label, nullptr), (bool*)val_data(p_open), flags);
 		#endif
 		return false;
 	}
@@ -1593,13 +1593,13 @@ namespace lime {
 	}
 	bool lime_imgui_tab_item_button(HxString label, int flags){
 		#ifdef LIME_IMGUI
-		return ImGui::TabItemButton(label.__s, flags);
+		return ImGui::TabItemButton(hxs_utf8(label, nullptr), flags);
 		#endif
 		return false;
 	}
 	void lime_imgui_set_tab_item_closed(HxString tab_or_docked_window_label){
 		#ifdef LIME_IMGUI
-		ImGui::SetTabItemClosed(tab_or_docked_window_label.__s);
+		ImGui::SetTabItemClosed(hxs_utf8(tab_or_docked_window_label, nullptr));
 		#endif
 	}
 
@@ -1889,7 +1889,7 @@ namespace lime {
 
 	value lime_imgui_calc_text_size(HxString text, HxString text_end, bool hide_text_after_double_hash, float wrap_width){
 		#ifdef LIME_IMGUI
-		ImVec2 vec = ImGui::CalcTextSize(text.__s, text_end.__s, hide_text_after_double_hash, wrap_width);
+		ImVec2 vec = ImGui::CalcTextSize(hxs_utf8(text, nullptr), hxs_utf8(text_end, nullptr), hide_text_after_double_hash, wrap_width);
 		return Vector2(vec.x, vec.y).Value();
 		#endif
 		return Vector2(0.0, 0.0).Value();
@@ -2059,7 +2059,7 @@ namespace lime {
 	}
 	void lime_imgui_set_clipboard_text(HxString text){
 		#ifdef LIME_IMGUI
-		ImGui::SetClipboardText(text.__s);
+		ImGui::SetClipboardText(hxs_utf8(text, nullptr));
 		#endif
 	}
 
@@ -2631,13 +2631,13 @@ namespace lime {
 	void lime_imgui_draw_list_add_text(double handle, float posX, float posY, int col, HxString text_begin, HxString text_end){
 		#ifdef LIME_IMGUI
 		ImDrawList* drawList = (ImDrawList*)getPointerFromHandle(handle);
-		drawList->AddText(ImVec2(posX, posY), col, text_begin.__s, text_end.__s);
+		drawList->AddText(ImVec2(posX, posY), col, hxs_utf8(text_begin, nullptr), hxs_utf8(text_end, nullptr));
 		#endif
 	}
 	/*void lime_imgui_draw_list_add_text(double handle, value font, float font_size, float posX, float posY, int col, HxString text_begin, HxString text_end, float wrap_width, int cpu_fine_clip_rect){
 		#ifdef LIME_IMGUI
 		ImDrawList* drawList = (ImDrawList*)getPointerFromHandle(handle);
-		drawList->AddText(font, font_size, ImVec2(posX, posY), col, text_begin.__s, text_end.__s, wrap_width, cpu_fine_clip_rect);
+		drawList->AddText(font, font_size, ImVec2(posX, posY), col, hxs_utf8(text_begin, nullptr), hxs_utf8(text_end, nullptr), wrap_width, cpu_fine_clip_rect);
 		#endif
 	}*/
 	void lime_imgui_draw_list_add_bezier_cubic(double handle, value points, int col, float thickness, int num_segments){
@@ -3083,7 +3083,7 @@ namespace lime {
 	HxString lime_imgui_io_set_ini_filename(HxString IniFilename){
 		#ifdef LIME_IMGUI
 		ImGuiIO& io = ImGui::GetIO();
-		return io.IniFilename = IniFilename.__s;
+		return io.IniFilename = hxs_utf8(IniFilename, nullptr);
 		#endif
 		return 0;
 	}
@@ -3097,7 +3097,7 @@ namespace lime {
 	HxString lime_imgui_io_set_log_filename(HxString LogFilename){
 		#ifdef LIME_IMGUI
 		ImGuiIO& io = ImGui::GetIO();
-		return io.LogFilename = LogFilename.__s;
+		return io.LogFilename = hxs_utf8(LogFilename, nullptr);
 		#endif
 		return 0;
 	}
@@ -4189,7 +4189,7 @@ namespace lime {
 		ImFontAtlas* fontAtlas = (ImFontAtlas*)getPointerFromHandle(handle);
 		ImFontConfig cfg;
 		getFontConfig(font_cfg, cfg);
-		return getHandleFromPointer((void*)fontAtlas->AddFontFromFileTTF(filename.__s, size_pixels, &cfg));
+		return getHandleFromPointer((void*)fontAtlas->AddFontFromFileTTF(hxs_utf8(filename, nullptr), size_pixels, &cfg));
 		#endif
 		return 0;
 	}
@@ -6075,7 +6075,7 @@ namespace lime {
 	void lime_imgui_input_text_callback_data_insert_chars(double handle, int pos, HxString text){
 		#ifdef LIME_IMGUI
 		ImGuiInputTextCallbackData* data = (ImGuiInputTextCallbackData*)getPointerFromHandle(handle);
-		data->InsertChars(pos, text.__s);
+		data->InsertChars(pos, hxs_utf8(text, nullptr));
 		#endif
 	}
 	void lime_imgui_input_text_callback_data_select_all(double handle){
