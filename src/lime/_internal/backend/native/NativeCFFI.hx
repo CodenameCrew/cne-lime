@@ -7828,7 +7828,7 @@ class NativeCFFI
 	private static var lime_imgui_shortcut = new cpp.Callable<Int->Int->Bool>(cpp.Prime._loadPrime("lime", "lime_imgui_shortcut", "iib", false));
 	private static var lime_imgui_set_next_item_shortcut = new cpp.Callable<Int->Int->cpp.Void>(cpp.Prime._loadPrime("lime", "lime_imgui_set_next_item_shortcut", "iiv", false));
 	
-	private static var lime_imgui_set_item_key_owner = new cpp.Callable<Int->cpp.Void>(cpp.Prime._loadPrime("lime", "lime_imgui_set_item_key_owner", "iv", false));
+	private static var lime_imgui_set_item_key_owner = new cpp.Callable<Int->Bool>(cpp.Prime._loadPrime("lime", "lime_imgui_set_item_key_owner", "ib", false));
 	
 	private static var lime_imgui_is_mouse_down = new cpp.Callable<Int->Bool>(cpp.Prime._loadPrime("lime", "lime_imgui_is_mouse_down", "ib", false));
 	private static var lime_imgui_is_mouse_clicked = new cpp.Callable<Int->Bool->Bool>(cpp.Prime._loadPrime("lime", "lime_imgui_is_mouse_clicked", "ibb", false));
@@ -8053,7 +8053,21 @@ class NativeCFFI
 	private static var lime_imgui_io_set_mouse_delta_x = new cpp.Callable<Float32->Float32>(cpp.Prime._loadPrime("lime", "lime_imgui_io_set_mouse_delta_x", "ff", false));
 	private static var lime_imgui_io_get_mouse_delta_y = new cpp.Callable<Void->Float32>(cpp.Prime._loadPrime("lime", "lime_imgui_io_get_mouse_delta_y", "f", false));
 	private static var lime_imgui_io_set_mouse_delta_y = new cpp.Callable<Float32->Float32>(cpp.Prime._loadPrime("lime", "lime_imgui_io_set_mouse_delta_y", "ff", false));
-	
+	private static var lime_imgui_io_get_mouse_pos_x = new cpp.Callable<Void->Float32>(cpp.Prime._loadPrime("lime", "lime_imgui_io_get_mouse_pos_x", "f", false));
+	private static var lime_imgui_io_get_mouse_pos_y = new cpp.Callable<Void->Float32>(cpp.Prime._loadPrime("lime", "lime_imgui_io_get_mouse_pos_y", "f", false));
+	private static var lime_imgui_io_get_mouse_down_0 = new cpp.Callable<Void->Bool>(cpp.Prime._loadPrime("lime", "lime_imgui_io_get_mouse_down_0", "b", false));
+	private static var lime_imgui_io_get_mouse_down_1 = new cpp.Callable<Void->Bool>(cpp.Prime._loadPrime("lime", "lime_imgui_io_get_mouse_down_1", "b", false));
+	private static var lime_imgui_io_get_mouse_down_2 = new cpp.Callable<Void->Bool>(cpp.Prime._loadPrime("lime", "lime_imgui_io_get_mouse_down_2", "b", false));
+	private static var lime_imgui_io_get_mouse_down_3 = new cpp.Callable<Void->Bool>(cpp.Prime._loadPrime("lime", "lime_imgui_io_get_mouse_down_3", "b", false));
+	private static var lime_imgui_io_get_mouse_down_4 = new cpp.Callable<Void->Bool>(cpp.Prime._loadPrime("lime", "lime_imgui_io_get_mouse_down_4", "b", false));
+	private static var lime_imgui_io_get_mouse_wheel = new cpp.Callable<Void->Float32>(cpp.Prime._loadPrime("lime", "lime_imgui_io_get_mouse_wheel", "f", false));
+	private static var lime_imgui_io_get_mouse_wheel_h = new cpp.Callable<Void->Float32>(cpp.Prime._loadPrime("lime", "lime_imgui_io_get_mouse_wheel_h", "f", false));
+	private static var lime_imgui_io_get_mouse_source = new cpp.Callable<Void->Int>(cpp.Prime._loadPrime("lime", "lime_imgui_io_get_mouse_source", "i", false));
+	private static var lime_imgui_io_get_key_ctrl = new cpp.Callable<Void->Bool>(cpp.Prime._loadPrime("lime", "lime_imgui_io_get_key_ctrl", "b", false));
+	private static var lime_imgui_io_get_key_shift = new cpp.Callable<Void->Bool>(cpp.Prime._loadPrime("lime", "lime_imgui_io_get_key_shift", "b", false));
+	private static var lime_imgui_io_get_key_alt = new cpp.Callable<Void->Bool>(cpp.Prime._loadPrime("lime", "lime_imgui_io_get_key_alt", "b", false));
+	private static var lime_imgui_io_get_key_super = new cpp.Callable<Void->Bool>(cpp.Prime._loadPrime("lime", "lime_imgui_io_get_key_super", "b", false));
+
 	
 	private static var lime_imgui_font_atlas_add_font = new cpp.Callable<Float->cpp.Object->Float>(cpp.Prime._loadPrime("lime", "lime_imgui_font_atlas_add_font", "dod", false));
 	private static var lime_imgui_font_atlas_add_font_default = new cpp.Callable<Float->cpp.Object->Float>(cpp.Prime._loadPrime("lime", "lime_imgui_font_atlas_add_font_default", "dod", false));

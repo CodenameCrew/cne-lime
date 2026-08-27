@@ -2522,11 +2522,12 @@ class ImGui
 	// Input utils (key/input ownership)
 	//////////////////////////////////////////////////////////////////////////////////////
 
-	public static function setItemKeyOwner(key:ImGuiKey):Void
+	public static function setItemKeyOwner(key:ImGuiKey):Bool
 	{
 		#if (lime_cffi && lime_imgui && !macro && cpp && !cppia && !disable_cffi)
-		NativeCFFI.lime_imgui_set_item_key_owner(key);
+		return NativeCFFI.lime_imgui_set_item_key_owner(key);
 		#end
+		return false;
 	}
 
 	//////////////////////////////////////////////////////////////////////////////////////

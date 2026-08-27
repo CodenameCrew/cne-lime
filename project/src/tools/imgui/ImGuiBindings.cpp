@@ -1949,10 +1949,11 @@ namespace lime {
 		ImGui::SetNextItemShortcut(key_chord, flags);
 		#endif
 	}
-	void lime_imgui_set_item_key_owner(int key){
+	bool lime_imgui_set_item_key_owner(int key){
 		#ifdef LIME_IMGUI
-		ImGui::SetItemKeyOwner((ImGuiKey)key);
+		return ImGui::SetItemKeyOwner((ImGuiKey)key);
 		#endif
+		return false;
 	}
 	bool lime_imgui_is_mouse_down(int button){
 		#ifdef LIME_IMGUI
@@ -2432,7 +2433,7 @@ namespace lime {
 	DEFINE_PRIME2 (lime_imgui_shortcut);
 	DEFINE_PRIME2v (lime_imgui_set_next_item_shortcut);
 
-	DEFINE_PRIME1v (lime_imgui_set_item_key_owner);
+	DEFINE_PRIME1 (lime_imgui_set_item_key_owner);
 
 	DEFINE_PRIME1 (lime_imgui_is_mouse_down);
 	DEFINE_PRIME2 (lime_imgui_is_mouse_clicked);
@@ -3972,6 +3973,105 @@ namespace lime {
 		return 0;
 	}
 
+	float lime_imgui_io_get_mouse_pos_x(){
+		#ifdef LIME_IMGUI
+		ImGuiIO& io = ImGui::GetIO();
+		return io.MousePos.x;
+		#endif
+		return 0;
+	}
+	float lime_imgui_io_get_mouse_pos_y(){
+		#ifdef LIME_IMGUI
+		ImGuiIO& io = ImGui::GetIO();
+		return io.MousePos.y;
+		#endif
+		return 0;
+	}
+	bool lime_imgui_io_get_mouse_down_0(){
+		#ifdef LIME_IMGUI
+		ImGuiIO& io = ImGui::GetIO();
+		return io.MouseDown[0];
+		#endif
+		return false;
+	}
+	bool lime_imgui_io_get_mouse_down_1(){
+		#ifdef LIME_IMGUI
+		ImGuiIO& io = ImGui::GetIO();
+		return io.MouseDown[1];
+		#endif
+		return false;
+	}
+	bool lime_imgui_io_get_mouse_down_2(){
+		#ifdef LIME_IMGUI
+		ImGuiIO& io = ImGui::GetIO();
+		return io.MouseDown[2];
+		#endif
+		return false;
+	}
+	bool lime_imgui_io_get_mouse_down_3(){
+		#ifdef LIME_IMGUI
+		ImGuiIO& io = ImGui::GetIO();
+		return io.MouseDown[3];
+		#endif
+		return false;
+	}
+	bool lime_imgui_io_get_mouse_down_4(){
+		#ifdef LIME_IMGUI
+		ImGuiIO& io = ImGui::GetIO();
+		return io.MouseDown[4];
+		#endif
+		return false;
+	}
+	float lime_imgui_io_get_mouse_wheel(){
+		#ifdef LIME_IMGUI
+		ImGuiIO& io = ImGui::GetIO();
+		return io.MouseWheel;
+		#endif
+		return 0;
+	}
+	float lime_imgui_io_get_mouse_wheel_h(){
+		#ifdef LIME_IMGUI
+		ImGuiIO& io = ImGui::GetIO();
+		return io.MouseWheelH;
+		#endif
+		return 0;
+	}
+	int lime_imgui_io_get_mouse_source(){
+		#ifdef LIME_IMGUI
+		ImGuiIO& io = ImGui::GetIO();
+		return io.MouseSource;
+		#endif
+		return 0;
+	}
+	bool lime_imgui_io_get_key_ctrl(){
+		#ifdef LIME_IMGUI
+		ImGuiIO& io = ImGui::GetIO();
+		return io.KeyCtrl;
+		#endif
+		return false;
+	}
+	bool lime_imgui_io_get_key_shift(){
+		#ifdef LIME_IMGUI
+		ImGuiIO& io = ImGui::GetIO();
+		return io.KeyShift;
+		#endif
+		return false;
+	}
+	bool lime_imgui_io_get_key_alt(){
+		#ifdef LIME_IMGUI
+		ImGuiIO& io = ImGui::GetIO();
+		return io.KeyAlt;
+		#endif
+		return false;
+	}
+	bool lime_imgui_io_get_key_super(){
+		#ifdef LIME_IMGUI
+		ImGuiIO& io = ImGui::GetIO();
+		return io.KeySuper;
+		#endif
+		return false;
+	}
+
 	DEFINE_PRIME0 (lime_imgui_io_get_config_flags);
 	DEFINE_PRIME1 (lime_imgui_io_set_config_flags);
 	DEFINE_PRIME0 (lime_imgui_io_get_backend_flags);
@@ -4116,7 +4216,20 @@ namespace lime {
 	DEFINE_PRIME1 (lime_imgui_io_set_mouse_delta_x);
 	DEFINE_PRIME0 (lime_imgui_io_get_mouse_delta_y);
 	DEFINE_PRIME1 (lime_imgui_io_set_mouse_delta_y);
-
+	DEFINE_PRIME0 (lime_imgui_io_get_mouse_pos_x);
+	DEFINE_PRIME0 (lime_imgui_io_get_mouse_pos_y);
+	DEFINE_PRIME0 (lime_imgui_io_get_mouse_down_0);
+	DEFINE_PRIME0 (lime_imgui_io_get_mouse_down_1);
+	DEFINE_PRIME0 (lime_imgui_io_get_mouse_down_2);
+	DEFINE_PRIME0 (lime_imgui_io_get_mouse_down_3);
+	DEFINE_PRIME0 (lime_imgui_io_get_mouse_down_4);
+	DEFINE_PRIME0 (lime_imgui_io_get_mouse_wheel);
+	DEFINE_PRIME0 (lime_imgui_io_get_mouse_wheel_h);
+	DEFINE_PRIME0 (lime_imgui_io_get_mouse_source);
+	DEFINE_PRIME0 (lime_imgui_io_get_key_ctrl);
+	DEFINE_PRIME0 (lime_imgui_io_get_key_shift);
+	DEFINE_PRIME0 (lime_imgui_io_get_key_alt);
+	DEFINE_PRIME0 (lime_imgui_io_get_key_super);
 
 	//ImFontAtlas
 

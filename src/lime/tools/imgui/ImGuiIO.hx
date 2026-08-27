@@ -3,6 +3,7 @@ package lime.tools.imgui;
 import lime.tools.imgui.ImGuiPtr;
 import lime.tools.imgui.ImFont;
 import lime.tools.imgui.ImGuiFlags;
+import lime.tools.imgui.ImGuiTypes;
 
 import lime._internal.backend.native.NativeCFFI;
 
@@ -81,6 +82,20 @@ class ImGuiIO
     public static var metricsActiveWindows(get, set):Int;
     public static var mouseDeltaX(get, set):Float;
     public static var mouseDeltaY(get, set):Float;
+	public static var mousePosX(get, null):Float;
+	public static var mousePosY(get, null):Float;
+	public static var mouseDown0(get, null):Bool;
+	public static var mouseDown1(get, null):Bool;
+	public static var mouseDown2(get, null):Bool;
+	public static var mouseDown3(get, null):Bool;
+	public static var mouseDown4(get, null):Bool;
+	public static var mouseWheel(get, null):Float;
+	public static var mouseWheelH(get, null):Float;
+	public static var mouseSource(get, null):Int;
+	public static var keyCtrl(get, null):Bool;
+	public static var keyShift(get, null):Bool;
+	public static var keyAlt(get, null):Bool;
+	public static var keySuper(get, null):Bool;
 
     private static function get_configFlags():ImGuiConfigFlags
     {
@@ -1091,4 +1106,103 @@ class ImGuiIO
         #end
         return 0;
     }
+
+	private static function get_mousePosX():Float
+	{
+		#if (lime_cffi && lime_imgui && !macro && cpp && !cppia && !disable_cffi)
+		return NativeCFFI.lime_imgui_io_get_mouse_pos_x();
+		#end
+		return 0;
+	}
+	private static function get_mousePosY():Float
+	{
+		#if (lime_cffi && lime_imgui && !macro && cpp && !cppia && !disable_cffi)
+		return NativeCFFI.lime_imgui_io_get_mouse_pos_y();
+		#end
+		return 0;
+	}
+	private static function get_mouseDown0():Bool
+	{
+		#if (lime_cffi && lime_imgui && !macro && cpp && !cppia && !disable_cffi)
+		return NativeCFFI.lime_imgui_io_get_mouse_down_0();
+		#end
+		return false;
+	}
+	private static function get_mouseDown1():Bool
+	{
+		#if (lime_cffi && lime_imgui && !macro && cpp && !cppia && !disable_cffi)
+		return NativeCFFI.lime_imgui_io_get_mouse_down_1();
+		#end
+		return false;
+	}
+	private static function get_mouseDown2():Bool
+	{
+		#if (lime_cffi && lime_imgui && !macro && cpp && !cppia && !disable_cffi)
+		return NativeCFFI.lime_imgui_io_get_mouse_down_2();
+		#end
+		return false;
+	}
+	private static function get_mouseDown3():Bool
+	{
+		#if (lime_cffi && lime_imgui && !macro && cpp && !cppia && !disable_cffi)
+		return NativeCFFI.lime_imgui_io_get_mouse_down_3();
+		#end
+		return false;
+	}
+	private static function get_mouseDown4():Bool
+	{
+		#if (lime_cffi && lime_imgui && !macro && cpp && !cppia && !disable_cffi)
+		return NativeCFFI.lime_imgui_io_get_mouse_down_4();
+		#end
+		return false;
+	}
+	private static function get_mouseWheel():Float
+	{
+		#if (lime_cffi && lime_imgui && !macro && cpp && !cppia && !disable_cffi)
+		return NativeCFFI.lime_imgui_io_get_mouse_wheel();
+		#end
+		return 0;
+	}
+	private static function get_mouseWheelH():Float
+	{
+		#if (lime_cffi && lime_imgui && !macro && cpp && !cppia && !disable_cffi)
+		return NativeCFFI.lime_imgui_io_get_mouse_wheel_h();
+		#end
+		return 0;
+	}
+	private static function get_mouseSource():ImGuiMouseSource
+	{
+		#if (lime_cffi && lime_imgui && !macro && cpp && !cppia && !disable_cffi)
+		return NativeCFFI.lime_imgui_io_get_mouse_source();
+		#end
+		return 0;
+	}
+	private static function get_keyCtrl():Bool
+	{
+		#if (lime_cffi && lime_imgui && !macro && cpp && !cppia && !disable_cffi)
+		return NativeCFFI.lime_imgui_io_get_key_ctrl();
+		#end
+		return false;
+	}
+	private static function get_keyShift():Bool
+	{
+		#if (lime_cffi && lime_imgui && !macro && cpp && !cppia && !disable_cffi)
+		return NativeCFFI.lime_imgui_io_get_key_shift();
+		#end
+		return false;
+	}
+	private static function get_keyAlt():Bool
+	{
+		#if (lime_cffi && lime_imgui && !macro && cpp && !cppia && !disable_cffi)
+		return NativeCFFI.lime_imgui_io_get_key_alt();
+		#end
+		return false;
+	}
+	private static function get_keySuper():Bool
+	{
+		#if (lime_cffi && lime_imgui && !macro && cpp && !cppia && !disable_cffi)
+		return NativeCFFI.lime_imgui_io_get_key_super();
+		#end
+		return false;
+	}
 }
