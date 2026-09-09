@@ -804,7 +804,7 @@ namespace lime {
 
 		System::GCExitBlocking ();
 
-		return success;
+		return success < 0 ? -1 : 0;
 
 	}
 
