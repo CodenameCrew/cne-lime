@@ -80,3 +80,7 @@
 [submodule "project/lib/opus"]
 	path = project/lib/opus
 	url = https://github.com/xiph/opus
+[submodule "project/lib/imgui"]
+	path = project/lib/imgui
+	url = https://github.com/ocornut/imgui.git
+	branch = docking

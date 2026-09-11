@@ -64,6 +64,9 @@ This product bundles libvorbis 1.3.3, which is available under a
 This product bundles zlib 1.2.8, which is available under a
 "zlib" (BSD-style) license. For details, see [project/lib/zlib/](project/lib).
 
+This product bundles Dear ImGui 1.93.0 WIP, which is available under an
+"MIT" license. For details, see [project/lib/imgui/](project/lib).
+
 -------
 
 Modifications and source-repository versions of Haxe core files are included in the
