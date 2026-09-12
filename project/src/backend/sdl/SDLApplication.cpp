@@ -303,7 +303,7 @@ namespace lime {
 			case SDL_EVENT_WINDOW_MOVED:
 			case SDL_EVENT_WINDOW_RESTORED:
 			case SDL_EVENT_WINDOW_EXPOSED:
-			case SDL_EVENT_WINDOW_RESIZED:
+			case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
 
 				ProcessWindowEvent(event);
 				break;
@@ -617,15 +617,18 @@ namespace lime {
 
 		if (MouseEvent::callback) {
 
+			SDL_Window * sdlWindow = SDL_GetWindowFromID(event->window.windowID);
+			float scale = SDL_GetWindowPixelDensity(sdlWindow) / SDL_GetWindowDisplayScale(sdlWindow);
+
 			switch (event->type) {
 
 				case SDL_EVENT_MOUSE_MOTION:
 
 					mouseEvent.type = MOUSE_MOVE;
-					mouseEvent.x = event->motion.x;
-					mouseEvent.y = event->motion.y;
-					mouseEvent.movementX = event->motion.xrel;
-					mouseEvent.movementY = event->motion.yrel;
+					mouseEvent.x = event->motion.x * scale;
+					mouseEvent.y = event->motion.y * scale;
+					mouseEvent.movementX = event->motion.xrel * scale;
+					mouseEvent.movementY = event->motion.yrel * scale;
 					break;
 
 				case SDL_EVENT_MOUSE_BUTTON_DOWN:
@@ -634,8 +637,8 @@ namespace lime {
 
 					mouseEvent.type = MOUSE_DOWN;
 					mouseEvent.button = event->button.button - 1;
-					mouseEvent.x = event->button.x;
-					mouseEvent.y = event->button.y;
+					mouseEvent.x = event->button.x * scale;
+					mouseEvent.y = event->button.y * scale;
 					mouseEvent.clickCount = event->button.clicks;
 					break;
 
@@ -645,8 +648,8 @@ namespace lime {
 
 					mouseEvent.type = MOUSE_UP;
 					mouseEvent.button = event->button.button - 1;
-					mouseEvent.x = event->button.x;
-					mouseEvent.y = event->button.y;
+					mouseEvent.x = event->button.x * scale;
+					mouseEvent.y = event->button.y * scale;
 					mouseEvent.clickCount = event->button.clicks;
 					break;
 
@@ -767,6 +770,7 @@ namespace lime {
 
 			}
 
+			// position values are in the range 0...1, so don't scale them (from: whoever wrote that original sdl3 pr i forgot)
 			touchEvent.x = event->tfinger.x;
 			touchEvent.y = event->tfinger.y;
 			touchEvent.id = event->tfinger.fingerID;
@@ -806,11 +810,15 @@ namespace lime {
 					windowEvent.y = event->window.data2;
 					break;
 
-				case SDL_EVENT_WINDOW_RESIZED:
+				case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+				{
+					SDL_Window * sdlWindow = SDL_GetWindowFromID(event->window.windowID);
+					float scale = SDL_GetWindowDisplayScale(sdlWindow);
 					windowEvent.type = WINDOW_RESIZE;
-					windowEvent.width = event->window.data1;
-					windowEvent.height = event->window.data2;
+					windowEvent.width = (int)(event->window.data1 / scale);
+					windowEvent.height = (int)(event->window.data2 / scale);
 					break;
+				}
 
 				case SDL_EVENT_WINDOW_RESTORED: windowEvent.type = WINDOW_RESTORE; break;
 

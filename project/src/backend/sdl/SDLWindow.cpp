@@ -113,7 +113,8 @@ namespace lime {
 
 		}
 
-		sdlWindow = SDL_CreateWindow (title, width, height, sdlWindowFlags);
+		float scale = SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay());
+		sdlWindow = SDL_CreateWindow (title, (int)(width * scale), (int)(height * scale), sdlWindowFlags);
 
 		if (!sdlWindow) {
 
@@ -588,7 +589,7 @@ namespace lime {
 
 	double SDLWindow::GetScale () {
 
-		return 1 /* SDL_GetWindowDisplayScale (sdlWindow) */;
+		return SDL_GetWindowDisplayScale(sdlWindow);
 
 	}
 
