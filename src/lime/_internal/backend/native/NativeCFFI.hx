@@ -8365,6 +8365,10 @@ class NativeCFFI
 	private static var lime_imgui_table_column_sort_specs_get_column_index = new cpp.Callable<Float->Int>(cpp.Prime._loadPrime("lime", "lime_imgui_table_column_sort_specs_get_column_index", "di", false));
 	private static var lime_imgui_table_column_sort_specs_get_sort_order = new cpp.Callable<Float->Int>(cpp.Prime._loadPrime("lime", "lime_imgui_table_column_sort_specs_get_sort_order", "di", false));
 	private static var lime_imgui_table_column_sort_specs_get_sort_direction = new cpp.Callable<Float->Int>(cpp.Prime._loadPrime("lime", "lime_imgui_table_column_sort_specs_get_sort_direction", "di", false));
+	
+	private static var lime_imgui_is_any_window_multi_viewport = new cpp.Callable<Void->Bool>(cpp.Prime._loadPrime("lime", "lime_imgui_is_any_window_multi_viewport", "b", false));
+	private static var lime_imgui_clear_all_window_settings = new cpp.Callable<Void->cpp.Void>(cpp.Prime._loadPrime("lime", "lime_imgui_clear_all_window_settings", "v", false));
+	private static var lime_imgui_bring_named_window_to_display_front = new cpp.Callable<String->cpp.Void>(cpp.Prime._loadPrime("lime", "lime_imgui_bring_named_window_to_display_front", "sv", false));
 	#end
 	#end
 	#if (neko || cppia)

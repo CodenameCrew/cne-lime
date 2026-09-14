@@ -6608,6 +6608,39 @@ namespace lime {
 	DEFINE_PRIME1 (lime_imgui_table_column_sort_specs_get_column_index);
 	DEFINE_PRIME1 (lime_imgui_table_column_sort_specs_get_sort_order);
 	DEFINE_PRIME1 (lime_imgui_table_column_sort_specs_get_sort_direction);
+
+	//custom (using internal funcs)
+
+	bool lime_imgui_is_any_window_multi_viewport () {
+		#ifdef LIME_IMGUI
+		ImGuiContext& g = *ImGui::GetCurrentContext();
+		for (ImGuiWindow* window : g.Windows) {
+			if (window->ViewportOwned) {
+				return true;
+			}
+		}
+		#endif
+		return false;
+	}
+	void lime_imgui_clear_all_window_settings () {
+		#ifdef LIME_IMGUI
+		ImGuiContext& g = *ImGui::GetCurrentContext();
+		for (ImGuiWindow* window : g.Windows) {
+			ImGui::ClearWindowSettings(window->Name);
+		}
+		#endif
+	}
+	void lime_imgui_bring_named_window_to_display_front (HxString name) {
+		#ifdef LIME_IMGUI
+		ImGuiWindow* window = ImGui::FindWindowByName(hxs_utf8(name, nullptr));
+		if (window) {
+			ImGui::BringWindowToDisplayFront(window);
+		}
+		#endif
+	}
+	DEFINE_PRIME0 (lime_imgui_is_any_window_multi_viewport);
+	DEFINE_PRIME0v (lime_imgui_clear_all_window_settings);
+	DEFINE_PRIME1v (lime_imgui_bring_named_window_to_display_front);
 }
 
 

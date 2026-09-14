@@ -21,6 +21,32 @@ class ImGui
 	//	- Some functions that would be overloadable have slightly altered names
 
 	//////////////////////////////////////////////////////////////////////////////////////
+	// Custom
+	//////////////////////////////////////////////////////////////////////////////////////
+
+	public static function isAnyWindowMultiViewport():Bool
+	{
+		#if (lime_cffi && lime_imgui && !macro && cpp && !cppia && !disable_cffi)
+		return NativeCFFI.lime_imgui_is_any_window_multi_viewport();
+		#end
+		return false;
+	}
+
+	public static function clearAllWindowSettings():Void
+	{
+		#if (lime_cffi && lime_imgui && !macro && cpp && !cppia && !disable_cffi)
+		NativeCFFI.lime_imgui_clear_all_window_settings();
+		#end
+	}
+
+	public static function bringNamedWindowToDisplayFront(name:String):Void
+	{
+		#if (lime_cffi && lime_imgui && !macro && cpp && !cppia && !disable_cffi)
+		NativeCFFI.lime_imgui_bring_named_window_to_display_front(name);
+		#end
+	}
+
+	//////////////////////////////////////////////////////////////////////////////////////
 	// Main
 	//////////////////////////////////////////////////////////////////////////////////////
 
