@@ -390,17 +390,15 @@ void FunkinALConfigDefault()
     SetConfigValue("stereo-mode", "speakers");
     SetConfigValue("stereo-encoding", "basic");
     SetConfigValue("cf_level", "0");
+    SetConfigValue("resampler", "fast_bsinc24");
     SetConfigValue("output-limiter", "false");
     SetConfigValue("front-stablizer", "false");
     SetConfigValue("volume-adjust", "0");
-    SetConfigValue("period_size", "441");
-    SetConfigValue("periods", "4");
-    // weird number, but ive heard that this is to avoid overhead in cpu?
-    // https://github.com/OldUnreal/UT2004Patches/issues/116
-    SetConfigValue("sources", "384");
+    SetConfigValue("period_size", "512");
+    SetConfigValue("periods", "3");
+    SetConfigValue("sources", "512");
     SetConfigValue("sends", "64");
     SetConfigValue("dither", "false");
-    SetConfigValue("dither-depth", "0");
     SetConfigValue("decoder/hq-mode", "false");
     SetConfigValue("decoder/distance-comp", "false");
     SetConfigValue("decoder/nfc", "false");
