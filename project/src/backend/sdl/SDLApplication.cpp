@@ -895,8 +895,18 @@ namespace lime {
 		// If the frame was faster than the target frame time, delay to cap FPS
 		if (frameTime.frame < frameTime.target) {
 
-			// Pause for the remaining time to maintain a consistent frame rate
-			SDL_DelayPrecise (frameTime.target - frameTime.frame);
+			Uint64 deadline = frameTime.previous + (frameTime.target - frameTime.frame);
+
+			// Portion of the wait left to spinning; sleeps handle the rest to save CPU
+			const Uint64 SPIN_MARGIN_NS = 1500000; // 1.5 ms
+
+			Uint64 now = SDL_GetTicksNS ();
+			if (deadline > now + SPIN_MARGIN_NS) {
+				SDL_DelayNS (deadline - now - SPIN_MARGIN_NS);
+			}
+			while (SDL_GetTicksNS () < deadline) {
+				// Busy-wait until the exact frame deadline
+			}
 
 			// Measure the actual time spent waiting and add it to frameTime
 			frameTime.current = SDL_GetTicksNS ();
