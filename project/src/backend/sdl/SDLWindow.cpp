@@ -150,7 +150,7 @@ namespace lime {
 
 				// Setup Platform/Renderer backends
 				ImGui_ImplSDL3_InitForOpenGL(sdlWindow, context);
-				ImGui_ImplOpenGL3_Init("#version 120");
+				ImGui_ImplOpenGL3_Init("#version 150");
 				#endif
 
 			} else {
