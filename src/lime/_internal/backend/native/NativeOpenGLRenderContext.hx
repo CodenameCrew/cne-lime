@@ -610,6 +610,9 @@ class NativeOpenGLRenderContext
 	public var DYNAMIC_COPY = 0x88EA;
 	public var DEPTH_COMPONENT32F = 0x8CAC;
 	public var DEPTH32F_STENCIL8 = 0x8CAD;
+	public var MAJOR_VERSION = 0x821B;
+	public var MINOR_VERSION = 0x821C;
+	public var NUM_EXTENSIONS = 0x821D;
 	public var INVALID_INDEX = 0xFFFFFFFF;
 	public var TIMEOUT_IGNORED = -1;
 	public var MAX_CLIENT_WAIT_TIMEOUT_WEBGL = 0x9247;
@@ -2106,7 +2109,10 @@ class NativeOpenGLRenderContext
 	{
 		if (__supportedExtensions == null)
 		{
-			// TODO: getStringi for newer GL versions
+			inline function pushExtension(extension:String)
+			{
+				__supportedExtensions.push(StringTools.startsWith(extension, "GL_") ? extension.substr(3) : extension);
+			}
 
 			__supportedExtensions = new Array<String>();
 			var extensions = getString(GL.EXTENSIONS);
@@ -2114,18 +2120,14 @@ class NativeOpenGLRenderContext
 			if (extensions != null)
 			{
 				var extensionList = extensions.split(" ");
+				for (extension in extensionList) pushExtension(extension);
+			}
+			else
+			{
+				getError(); // ignore the invalid enum error here, try getStringi OpenGL 3.0+ method
 
-				for (extension in extensionList)
-				{
-					if (StringTools.startsWith(extension, "GL_"))
-					{
-						__supportedExtensions.push(extension.substr(3));
-					}
-					else
-					{
-						__supportedExtensions.push(extension);
-					}
-				}
+				var num = getInteger(GL.NUM_EXTENSIONS);
+				for (i in 0...num) pushExtension(getStringi(GL.EXTENSIONS, i));
 			}
 		}
 
