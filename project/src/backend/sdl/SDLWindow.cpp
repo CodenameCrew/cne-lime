@@ -39,6 +39,9 @@ namespace lime {
 
 		contextWidth = 0;
 		contextHeight = 0;
+		#ifdef LIME_IMGUI
+		isPrimaryImGuiWindow = false;
+		#endif
 
 		currentApplication = application;
 		this->flags = flags;
@@ -146,18 +149,24 @@ namespace lime {
 				#endif
 
 				#ifdef LIME_IMGUI
-				IMGUI_CHECKVERSION();
-				ImGui::CreateContext();
-				ImGuiIO& io = ImGui::GetIO();
-				io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-				io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-				io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-				io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
-				io.ConfigErrorRecoveryEnableAssert = false;
+				static bool firstWindow = true;
+				isPrimaryImGuiWindow = firstWindow;
+				if (isPrimaryImGuiWindow) {
+					firstWindow = false;
+					
+					IMGUI_CHECKVERSION();
+					ImGui::CreateContext();
+					ImGuiIO& io = ImGui::GetIO();
+					io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+					io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+					io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+					io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+					io.ConfigErrorRecoveryEnableAssert = false;
 
-				// Setup Platform/Renderer backends
-				ImGui_ImplSDL3_InitForOpenGL(sdlWindow, context);
-				ImGui_ImplOpenGL3_Init("#version 150");
+					// Setup Platform/Renderer backends
+					ImGui_ImplSDL3_InitForOpenGL(sdlWindow, context);
+					ImGui_ImplOpenGL3_Init("#version 150");
+				}
 				#endif
 
 			} else {
@@ -191,9 +200,11 @@ namespace lime {
 	SDLWindow::~SDLWindow () {
 
 		#if LIME_IMGUI
-		ImGui_ImplOpenGL3_Shutdown();
-		ImGui_ImplSDL3_Shutdown();
-		ImGui::DestroyContext();
+		if (isPrimaryImGuiWindow) {
+			ImGui_ImplOpenGL3_Shutdown();
+			ImGui_ImplSDL3_Shutdown();
+			ImGui::DestroyContext();
+		}
 		#endif
 
 		if (sdlWindow) {
@@ -326,9 +337,11 @@ namespace lime {
 		if (context) {
 
 			#ifdef LIME_IMGUI
-			if (ImGui::GetCurrentContext()->WithinFrameScope) {
-				ImGui::Render();
-				ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+			if (isPrimaryImGuiWindow) {
+				if (ImGui::GetCurrentContext()->WithinFrameScope) {
+					ImGui::Render();
+					ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+				}
 			}
 			#endif
 

@@ -72,6 +72,9 @@ namespace lime {
 			int contextHeight;
 			int contextWidth;
 
+			#ifdef LIME_IMGUI
+			bool isPrimaryImGuiWindow;
+			#endif
 	};
 
 
