@@ -17,6 +17,16 @@
 namespace lime {
 
 
+	struct GLContextRequest {
+
+		int profile;
+		int major;
+		int minor;
+		int flags;
+
+	};
+
+
 	Cursor SDLWindow::currentCursor = DEFAULT;
 
 	SDL_Cursor* SDLCursor::arrowCursor = 0;
@@ -30,6 +40,7 @@ namespace lime {
 	SDL_Cursor* SDLCursor::textCursor = 0;
 	SDL_Cursor* SDLCursor::waitCursor = 0;
 	SDL_Cursor* SDLCursor::waitArrowCursor = 0;
+
 
 	SDLWindow::SDLWindow (Application* application, int width, int height, int flags, const char* title) {
 
@@ -64,23 +75,6 @@ namespace lime {
 		if (flags & WINDOW_FLAG_HARDWARE) {
 
 			sdlWindowFlags |= SDL_WINDOW_OPENGL;
-
-			#ifdef LIME_OPENGL_GL
-			#ifdef HX_MACOS
-			SDL_GL_SetAttribute (SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-			SDL_GL_SetAttribute (SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-			SDL_GL_SetAttribute (SDL_GL_CONTEXT_MINOR_VERSION, 1);
-			SDL_GL_SetAttribute (SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
-			#else
-			SDL_GL_SetAttribute (SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-			SDL_GL_SetAttribute (SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-			SDL_GL_SetAttribute (SDL_GL_CONTEXT_MINOR_VERSION, 3);
-			#endif
-			#elif LIME_OPENGL_GLES2
-			SDL_GL_SetAttribute (SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-			SDL_GL_SetAttribute (SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-			SDL_GL_SetAttribute (SDL_GL_CONTEXT_MINOR_VERSION, 0);
-			#endif
 
 			if (flags & WINDOW_FLAG_DEPTH_BUFFER) {
 
@@ -134,7 +128,35 @@ namespace lime {
 
 		if (flags & WINDOW_FLAG_HARDWARE) {
 
-			context = SDL_GL_CreateContext (sdlWindow);
+			static const GLContextRequest contextRequests[] = {
+
+				#ifdef LIME_OPENGL_GL
+				#ifdef HX_MACOS
+				{SDL_GL_CONTEXT_PROFILE_CORE, 4, 1, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG},
+				{SDL_GL_CONTEXT_PROFILE_CORE, 3, 2, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG},
+				{SDL_GL_CONTEXT_PROFILE_COMPATIBILITY, 2, 1, 0},
+				#else
+				{SDL_GL_CONTEXT_PROFILE_CORE, 3, 3, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG},
+				{SDL_GL_CONTEXT_PROFILE_COMPATIBILITY, 2, 1, 0},
+				#endif
+				#elif LIME_OPENGL_GLES2
+				{SDL_GL_CONTEXT_PROFILE_ES, 3, 0, 0},
+				{SDL_GL_CONTEXT_PROFILE_ES, 2, 0, 0},
+				#endif
+
+			};
+
+			for (const GLContextRequest &contextRequest : contextRequests) {
+
+				SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, contextRequest.profile);
+				SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, contextRequest.major);
+				SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, contextRequest.minor);
+				SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, contextRequest.flags);
+
+				context = SDL_GL_CreateContext (sdlWindow);
+				if (context) break;
+
+			}
 
 			if (context && SDL_GL_MakeCurrent (sdlWindow, context)) {
 
