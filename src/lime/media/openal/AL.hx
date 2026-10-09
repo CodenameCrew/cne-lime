@@ -789,7 +789,7 @@ class AL
 
 	public static function getErrorString(?error:Int):String
 	{
-		return switch (error != null ? error : getError())
+		return switch (error != null ? error : (error = getError()))
 		{
 			case INVALID_NAME: "INVALID_NAME: Invalid parameter name";
 			case INVALID_ENUM: "INVALID_ENUM: Invalid enum value";
