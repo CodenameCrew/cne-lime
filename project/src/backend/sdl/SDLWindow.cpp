@@ -362,7 +362,29 @@ namespace lime {
 			}
 			#endif
 
-			SDL_GL_SwapWindow (sdlWindow);
+			// frame pacing gate: unlimited-fps presents only near the next compositor boundary
+			FramePacer* framePacer = SDLApplication::GetFramePacer ();
+
+			// fullscreen edge-grid only: the drain pins the swap wait to a fixed
+			// point (an undrained swap blocks with random length)
+			if (framePacer && framePacer->ShouldDrainGpu ()) {
+
+				GLsync fence = glFenceSync (GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+
+				if (fence) {
+
+					glClientWaitSync (fence, GL_SYNC_FLUSH_COMMANDS_BIT, 10000000ULL);
+					glDeleteSync (fence);
+
+				}
+
+			}
+
+			if (!framePacer || framePacer->ShouldSwap (SDL_GetTicksNS ())) {
+
+				SDL_GL_SwapWindow (sdlWindow);
+
+			}
 
 		}
 

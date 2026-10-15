@@ -17,6 +17,7 @@
 #include <ui/TextEvent.h>
 #include <ui/TouchEvent.h>
 #include <ui/WindowEvent.h>
+#include "FramePacer.h"
 #include "SDLWindow.h"
 
 
@@ -46,6 +47,13 @@ namespace lime {
 
 			void RegisterWindow (SDLWindow *window);
 
+			// swap gate for the window backend; null before the app exists
+			static FramePacer* GetFramePacer () {
+
+				return currentApplication ? &currentApplication->framePacer : nullptr;
+
+			}
+
 		private:
 			void InitializeSensors();
 
@@ -67,6 +75,7 @@ namespace lime {
 
 			static SDLApplication* currentApplication;
 			FrameTime frameTime;
+			FramePacer framePacer;
 			bool active;
 
 			ApplicationEvent applicationEvent;
