@@ -142,6 +142,8 @@ namespace lime {
 		Uint64 frameSerial;              // increments once per WaitFrameStart
 		Uint64 lastGridSampleFrame;      // frame already counted into the gear window
 		Uint64 lastTarget;               // cap target passed to WaitFrameStart (0 = unlimited)
+		double capCarry;                 // low-cap Bresenham: fractional boundary-step carry (mean rate = cap)
+		Uint64 capGoalBoundary;          // low-cap Bresenham: this frame's goal boundary on the edge grid
 		int slowBurst;                   // consecutive slow frames (raw evidence log)
 		Uint64 lastSlowLogNs;            // slow-frame log throttle
 
@@ -218,6 +220,8 @@ namespace lime {
 			frameSerial = 0;
 			lastGridSampleFrame = 0;
 			lastTarget = 0;
+			capCarry = 0.0;
+			capGoalBoundary = 0;
 			slowBurst = 0;
 			lastSlowLogNs = 0;
 
@@ -676,6 +680,8 @@ namespace lime {
 			gridK = 1;
 			lastPresented = 0;
 			nextBoundary = 0;
+			capCarry = 0.0;
+			capGoalBoundary = 0;
 			lastGateStart = 0;
 			gridWindowStart = 0;
 			gridSamples = 0;
@@ -1021,6 +1027,10 @@ namespace lime {
 			// one serial per frame: the gear window counts a frame exactly once
 			frameSerial++;
 
+			// cap semantics changed: a stale Bresenham goal boundary must not leak
+			// into other paths' miss verdicts -- drop it (re-anchored on re-entry)
+			if (target != lastTarget) capGoalBoundary = 0;
+
 			// the cap rides along for ShouldSwap's submission grid
 			lastTarget = target;
 
@@ -1070,11 +1080,73 @@ namespace lime {
 
 			}
 
-			// pace unlimited or caps at/above refresh; lower caps keep the time-based limiter
+			// low cap (target > 1.03P): Bresenham boundary scheduling takes over
+			// (was: return false into the pure time-based limiter). goal boundaries
+			// live on the real edge grid -- a mix of floor/ceil(target/period)·P
+			// steps -- and the carry keeps the mean rate exactly at the cap
 			if (!fullscreenMode && target != 0 && target > period + period / 32) {
 
+				double tOverP = (double) target / period;
+
+				int n = (int) std::floor (tOverP + capCarry);
+
+				capCarry = tOverP + capCarry - n;
+
+				if (n < 1) n = 1;
+
+				if (!capGoalBoundary || capGoalBoundary + (period << 1) < now) {
+
+					// first frame / fallen too far behind (miss run or mode switch):
+					// re-anchor on the next usable boundary, carry is not fed back
+					capGoalBoundary = NextBoundaryAfter (now + (Uint64) eps + (Uint64) rEst, period);
+
+				} else {
+
+					capGoalBoundary += period * n;
+
+				}
+
+				double r = rEst;
+
+				if (r < period * 0.05) r = period * 0.05;
+				if (r > period * 0.75) r = period * 0.75;
+
+				long long submitStart = (long long) capGoalBoundary - (long long) eps - (long long) r;
+
+				if (submitStart > (long long) now) {
+
+					Uint64 deadline = (Uint64) submitStart;
+
+					// Never wait more than one period (bad anchor data would stall here)
+					if (deadline > now + period) {
+
+						capGoalBoundary = 0;
+						gateActive = false;
+						frameStartT0 = now;
+						return true;
+
+					}
+
+					if (deadline > now + SPIN_MARGIN_NS) {
+
+						SDL_DelayNS (deadline - now - SPIN_MARGIN_NS);
+
+					}
+
+					while (SDL_GetTicksNS () < deadline) {
+
+
+
+					}
+
+				}
+
+				// not a gate frame: no ShouldSwap grid accounting, submissions stay
+				// per-frame via ContextFlip's SwapWindow; paced=true skips the
+				// time-based limiter (the cap is the Bresenham mean)
 				gateActive = false;
-				return false;
+				frameStartT0 = SDL_GetTicksNS ();
+				return true;
 
 			}
 
@@ -1115,7 +1187,11 @@ namespace lime {
 
 				if (!freeRun) overloadLogged = false;
 
-				bool edgeAligned = fullscreenMode && filteredBody > 0.0
+				// fullscreen any target, or windowed with a cap (target != 0); windowed
+				// unlimited (target == 0) keeps free-running. windowed gate only reaches
+				// here below 0.97P (low caps are taken by the Bresenham branch above),
+				// and freeRun/probe are fullscreen-only verdicts (always false there)
+				bool edgeAligned = (fullscreenMode || target != 0) && filteredBody > 0.0
 					&& (target == 0 || target <= period + period / 32)
 					&& (!freeRun || probeFrame);
 
@@ -1150,7 +1226,10 @@ namespace lime {
 
 					// lead = whole body (commands + drained GPU) + anchor publication
 					// delay; the clamp scales with the grid so an N-period body fits
-					double lead = filteredBody + (double) EDGE_MARGIN_NS;
+					// fullscreen keeps the fixed margin (the fence drain covers the rest);
+					// windowed deadlines sit at DWM composite points with an a-priori
+					// unknowable vblank phase -- the adaptive eps covers that offset
+					double lead = filteredBody + (fullscreenMode ? (double) EDGE_MARGIN_NS : eps);
 
 					if (lead > (double) gridPeriod * 0.94) lead = (double) gridPeriod * 0.94;
 
@@ -1538,8 +1617,12 @@ namespace lime {
 
 			if (!fullscreenMode) {
 
-				// windowed tunes eps from late frames; fullscreen pins the edge
-				RecordMiss (nextBoundary != 0 && frameEnd > nextBoundary);
+				// windowed tunes eps from late frames; fullscreen pins the edge.
+				// low-cap Bresenham: the goal boundary (not nextBoundary, which
+				// follows the edge) is this frame's deadline
+				RecordMiss (capGoalBoundary != 0
+					? frameEnd > capGoalBoundary
+					: (nextBoundary != 0 && frameEnd > nextBoundary));
 
 			}
 
