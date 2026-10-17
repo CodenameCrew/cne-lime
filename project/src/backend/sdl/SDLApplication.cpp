@@ -928,7 +928,7 @@ namespace lime {
 			Uint64 deadline = frameTime.previous + (frameTime.target - frameTime.frame);
 
 			// Portion of the wait left to spinning; sleeps handle the rest to save CPU
-			const Uint64 SPIN_MARGIN_NS = 1500000; // 1.5 ms
+			const Uint64 SPIN_MARGIN_NS = 1000000; // 1 ms
 
 			Uint64 now = SDL_GetTicksNS ();
 			if (deadline > now + SPIN_MARGIN_NS) {

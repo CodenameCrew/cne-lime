@@ -50,7 +50,7 @@ namespace lime {
 
 
 	static const Uint64 ANCHOR_STALE_NS = 200000000ULL; // degrade after 200 ms without vblank
-	static const Uint64 SPIN_MARGIN_NS = 1500000ULL;    // busy-wait margin, as in SDLApplication
+	static const Uint64 SPIN_MARGIN_NS = 1000000ULL;    // busy-wait margin, as in SDLApplication
 
 	static const double EPS_MIN = 600000.0;    // submission lead time bounds
 	static const double EPS_MAX = 4000000.0;
