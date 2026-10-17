@@ -925,11 +925,14 @@ namespace lime {
 
 			}
 
+		// If the frame was faster than the target frame time, delay to cap FPS
 		else if (frameTime.frame < frameTime.target) {
 
 			Uint64 deadline = frameTime.previous + (frameTime.target - frameTime.frame);
 
 			// Busy-wait margin follows the observed sleep overshoot max instead
+			// of a fixed 1.5 ms: sleeps handle the stable part, spinning only
+			// covers the unstable band (clamped to SPIN_MARGIN_MIN_NS)
 			Uint64 margin = spinMaxJitter;
 
 			Uint64 now = SDL_GetTicksNS ();
@@ -938,6 +941,7 @@ namespace lime {
 				Uint64 sleepNs = deadline - now - margin;
 				SDL_DelayNS (sleepNs);
 
+				// End-to-end sleep overshoot: actual wait minus requested sleep
 				Uint64 waited = SDL_GetTicksNS () - now;
 				Uint64 jitter = waited > sleepNs ? waited - sleepNs : 0;
 
