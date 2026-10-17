@@ -362,18 +362,16 @@ namespace lime {
 			}
 			#endif
 
-			// frame pacing gate: unlimited-fps presents only near the next compositor boundary
+			// pacing: undrained swaps block unpredictably once the flip queue fills
 			FramePacer* framePacer = SDLApplication::GetFramePacer ();
 
-			// fullscreen edge-grid only: the drain pins the swap wait to a fixed
-			// point (an undrained swap blocks with random length)
 			if (framePacer && framePacer->ShouldDrainGpu ()) {
 
 				GLsync fence = glFenceSync (GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 
 				if (fence) {
 
-					glClientWaitSync (fence, GL_SYNC_FLUSH_COMMANDS_BIT, 10000000ULL);
+					glClientWaitSync (fence, GL_SYNC_FLUSH_COMMANDS_BIT, 100000000ULL);
 					glDeleteSync (fence);
 
 				}

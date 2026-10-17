@@ -725,14 +725,15 @@ namespace lime {
 			int wantN = gridN;
 
 			// body can't fit the grid: smallest whole divider keeps intervals even
-			if (pct > 10 && filteredBody > (double) period * gridN) {
-
-				wantN = (int) std::ceil (filteredBody / (double) period);
-
-				if (wantN > 8) wantN = 8;
-
+			// if (pct > 10 && filteredBody > (double) period * gridN) {
+			//
+			// 	wantN = (int) std::ceil (filteredBody / (double) period);
+			//
+			// 	if (wantN > 8) wantN = 8;
+			//
 			// clean window that fits the next-lower grid: give the rate back
-			} else if (pct == 0 && gridN > 1
+			// } else
+			if (pct == 0 && gridN > 1
 				&& filteredBody < (double) period * (gridN - 1) - 500000.0) {
 
 				wantN = gridN - 1;
@@ -811,7 +812,9 @@ namespace lime {
 
 			Uint64 period = EffectivePeriod ();
 
-			if (!caught && period && missBy > period / 10) {
+			// over-budget body never re-arms: the hair-miss exemption would flip-flop sync/free-run
+			if (!caught && period
+				&& (missBy > period / 10 || filteredBody > (double) period * gridN)) {
 
 				probePasses = 0;
 
@@ -825,6 +828,12 @@ namespace lime {
 
 				tearActive = false;
 				probePasses = 0;
+
+				// re-anchor the grid: a stale lastPresented would deep-miss and relapse into free-run
+				lastPresented = 0;
+
+				// the stale streak must not re-release on the next miss
+				deepMissStreak = 0;
 
 				// the gear window is stale from the free-run episode -- fresh sample
 				gridWindowStart = SDL_GetTicksNS ();
@@ -1177,8 +1186,9 @@ namespace lime {
 				// one shared verdict for all consumers
 				freeRun = fullscreenTear && tearActive;
 
-				// one probe per second while free-running; two passes re-arm
-				if (freeRun && !probeFrame && now - lastProbeNs >= 1000000000ULL) {
+				// probe every 250 ms while free-running; consecutive passes re-arm back-to-back
+				if (freeRun && !probeFrame
+					&& (probePasses > 0 || now - lastProbeNs >= 250000000ULL)) {
 
 					probeFrame = true;
 					lastProbeNs = now;
@@ -1239,6 +1249,9 @@ namespace lime {
 					if (lead < (double) period * 0.1) lead = (double) period * 0.1;
 
 					long long startAt = (long long) NextBoundaryAfter (now, gridPeriod) - (long long) lead;
+
+					// probe must reach a verdict: slip to the next edge when this one is inside the lead
+					if (probeFrame && startAt <= (long long) now) startAt += (long long) gridPeriod;
 
 					if (startAt > (long long) now && startAt - (long long) now < (long long) (gridPeriod * 2)) {
 
@@ -1519,11 +1532,10 @@ namespace lime {
 		}
 
 
-		// fullscreen edge-grid only: the drain pins the swap wait to a fixed point
-		// (a random swap-block smears the cadence); free-run/windowed pipeline
+		// fullscreen gated modes always drain (undrained swap backpressure bursts the body); free-run is GPU-bound anyway; windowed undrained (DWM latches on its own)
 		bool ShouldDrainGpu () {
 
-			return fullscreenMode && (!freeRun || probeFrame);
+			return fullscreenMode;
 
 		}
 
