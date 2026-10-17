@@ -50,9 +50,6 @@ namespace lime {
 	SDLApplication* SDLApplication::currentApplication = 0;
 	bool inBackground = false;
 
-	static Uint64 spinMaxJitter = 1000000;
-	static const Uint64 SPIN_MARGIN_MIN_NS = 100000; // 0.1 ms floor keeps the window from getting too thin
-
 
 	const int analogAxisDeadZone = 1000;
 	std::map<int, std::map<int, int> > gamepadsAxisMap;
@@ -930,38 +927,12 @@ namespace lime {
 
 			Uint64 deadline = frameTime.previous + (frameTime.target - frameTime.frame);
 
-			// Busy-wait margin follows the observed sleep overshoot max instead
-			// of a fixed 1.5 ms: sleeps handle the stable part, spinning only
-			// covers the unstable band (clamped to SPIN_MARGIN_MIN_NS)
-			Uint64 margin = spinMaxJitter;
+			// Portion of the wait left to spinning; sleeps handle the rest to save CPU
+			const Uint64 SPIN_MARGIN_NS = 1500000; // 1.5 ms
 
 			Uint64 now = SDL_GetTicksNS ();
-			if (deadline > now + margin) {
-
-				Uint64 sleepNs = deadline - now - margin;
-				SDL_DelayNS (sleepNs);
-
-				// End-to-end sleep overshoot: actual wait minus requested sleep
-				Uint64 waited = SDL_GetTicksNS () - now;
-				Uint64 jitter = waited > sleepNs ? waited - sleepNs : 0;
-
-				// Instant rise (a missed deadline costs a frame), slow 1%/frame
-				// decay forgets outliers; min mirrors it for diagnostics
-				if (jitter > spinMaxJitter) {
-					spinMaxJitter = jitter;
-				} else {
-					Uint64 decayed = spinMaxJitter - spinMaxJitter / 100;
-					spinMaxJitter = decayed > SPIN_MARGIN_MIN_NS ? decayed : SPIN_MARGIN_MIN_NS;
-				}
-				if (jitter < spinMinJitter) {
-					spinMinJitter = jitter;
-				} else {
-					spinMinJitter += spinMinJitter / 100;
-				}
-				if (spinMinJitter > spinMaxJitter) {
-					spinMinJitter = spinMaxJitter;
-				}
-
+			if (deadline > now + SPIN_MARGIN_NS) {
+				SDL_DelayNS (deadline - now - SPIN_MARGIN_NS);
 			}
 			while (SDL_GetTicksNS () < deadline) {
 				// Busy-wait until the exact frame deadline
