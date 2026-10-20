@@ -50,6 +50,7 @@ namespace lime {
 	typedef NTSTATUS (APIENTRY *FP_CloseAdapterFunc) (FP_CloseAdapter*);
 	typedef NTSTATUS (APIENTRY *FP_WaitForVerticalBlankEventFunc) (FP_WaitForVerticalBlankEvent*);
 	typedef HRESULT (WINAPI *FP_DwmGetCompositionTimingInfoFunc) (HWND, DWM_TIMING_INFO*);
+	typedef BOOL (WINAPI *FP_MiniDumpWriteDumpFunc) (HANDLE, DWORD, HANDLE, int, void*, void*, void*);
 
 
 	static const Uint64 ANCHOR_STALE_NS = 200000000ULL;
@@ -98,6 +99,16 @@ namespace lime {
 		// anchor thread state
 		std::thread* anchorThread;
 		std::atomic<bool> running;
+
+		// watchdog: a hung main thread gets one stack dump for diagnosis
+		std::thread* watchdogThread;
+		std::atomic<Uint64> heartbeat;
+		std::atomic<int> stallPhase;      // 0 outside, 1 frame-start wait, 2 swap wait, 3 swap
+		std::atomic<bool> hangDumped;
+		std::atomic<Uint64> lastStallLog;
+		FP_MiniDumpWriteDumpFunc dumpWriter;
+		HANDLE mainThread;
+
 		D3DKMT_HANDLE hAdapter;
 		UINT vidPnSourceId;
 		bool adapterOpen;
@@ -149,6 +160,9 @@ namespace lime {
 		double gpuRef;
 		Uint64 lastTarget;
 		bool pacedLogged;
+		Uint64 lastStartNs;
+		void* lastGlContext;
+		bool pacerOff;
 
 		// stats window
 		Uint32 swapCount;
@@ -189,6 +203,20 @@ namespace lime {
 
 			anchorThread = nullptr;
 			running = false;
+			watchdogThread = nullptr;
+			heartbeat = 0;
+			stallPhase = 0;
+			hangDumped = false;
+			lastStallLog = 0;
+			dumpWriter = nullptr;
+			mainThread = nullptr;
+
+			if (!DuplicateHandle (GetCurrentProcess (), GetCurrentThread (), GetCurrentProcess (), &mainThread,
+				THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, 0)) {
+
+				mainThread = nullptr;
+
+			}
 			hAdapter = 0;
 			vidPnSourceId = 0;
 			adapterOpen = false;
@@ -230,6 +258,9 @@ namespace lime {
 			prevAnchorHw = false;
 			lastTarget = 0;
 			pacedLogged = false;
+			lastStartNs = 0;
+			lastGlContext = nullptr;
+			pacerOff = getenv ("LIME_NO_SCANLINE_GATE") != nullptr;
 			gpuQueryInit = false;
 			gpuQueryActive = false;
 			gpuQueryIndex = 0;
@@ -266,6 +297,15 @@ namespace lime {
 
 			}
 
+			// resolve up front: the dump runs while the main thread is stuck
+			HMODULE dbghelp = LoadLibraryW (L"dbghelp.dll");
+
+			if (dbghelp) {
+
+				dumpWriter = (FP_MiniDumpWriteDumpFunc) GetProcAddress (dbghelp, "MiniDumpWriteDump");
+
+			}
+
 			LARGE_INTEGER freq;
 
 			if (QueryPerformanceFrequency (&freq)) {
@@ -290,6 +330,18 @@ namespace lime {
 			if (anchorThread) {
 
 				delete anchorThread;
+
+			}
+
+			if (watchdogThread) {
+
+				delete watchdogThread;
+
+			}
+
+			if (mainThread) {
+
+				CloseHandle (mainThread);
 
 			}
 
@@ -324,7 +376,16 @@ namespace lime {
 			if (!running) {
 
 				running = true;
-				anchorThread = new std::thread (AnchorLoopStatic, this);
+
+				if (!pacerOff) {
+
+					anchorThread = new std::thread (AnchorLoopStatic, this);
+
+				}
+
+				watchdogThread = new std::thread (WatchdogLoopStatic, this);
+
+				GateLogRaw ("[FramePacer] hang watchdog armed\n");
 
 			}
 
@@ -800,6 +861,145 @@ namespace lime {
 		}
 
 
+		// The main thread never blocks for seconds on purpose; if it does, the
+		// process is hung. Dump it once so the stack survives the kill.
+		static void WatchdogLoopStatic (FramePacerImpl* pacer) {
+
+			SetThreadPriority (GetCurrentThread (), THREAD_PRIORITY_LOWEST);
+
+			pacer->WatchdogLoop ();
+
+		}
+
+
+		void WatchdogLoop () {
+
+			while (running) {
+
+				for (int i = 0; i < 20 && running; i++) SDL_DelayNS (50000000ULL);
+
+				if (!running) break;
+
+				Uint64 beat = heartbeat.load ();
+
+				if (!beat) continue;
+
+				Uint64 stalled = SDL_GetTicksNS () - beat;
+
+				if (stalled < 8000000000ULL) continue;
+
+				// a suspended machine is not a hang
+				if (hwndValue && !IsHungAppWindow (hwndValue)) continue;
+
+				LogStall ("main thread stalled", stalled);
+				LogMainThreadRip ();
+
+				if (!hangDumped.exchange (true)) WriteHangDump ();
+
+			}
+
+		}
+
+
+		void WriteHangDump () {
+
+			if (!dumpWriter) return;
+
+			HANDLE file = CreateFileW (L"framepacer-hang.dmp", GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+
+			if (file == INVALID_HANDLE_VALUE) return;
+
+			// thread info only: small, and every stack is still there
+			dumpWriter (GetCurrentProcess (), GetCurrentProcessId (), file, 0x1000, nullptr, nullptr, nullptr);
+
+			CloseHandle (file);
+
+			GateLogRaw ("[FramePacer] hang dump written: framepacer-hang.dmp\n");
+
+		}
+
+
+		// one RIP sample is enough to tell a driver wait from a pacer wait
+		void LogMainThreadRip () {
+
+			if (!mainThread) return;
+
+			if (SuspendThread (mainThread) == (DWORD) -1) return;
+
+			CONTEXT ctx;
+			memset (&ctx, 0, sizeof (ctx));
+			ctx.ContextFlags = CONTEXT_CONTROL;
+
+			if (GetThreadContext (mainThread, &ctx)) {
+
+				MEMORY_BASIC_INFORMATION mbi;
+
+				if (VirtualQuery ((LPCVOID) ctx.Rip, &mbi, sizeof (mbi)) && mbi.AllocationBase) {
+
+					wchar_t path[MAX_PATH];
+
+					if (GetModuleFileNameW ((HMODULE) mbi.AllocationBase, path, MAX_PATH)) {
+
+						const wchar_t* name = path;
+						const wchar_t* slash = nullptr;
+
+						for (const wchar_t* c = path; *c; c++) {
+
+							if (*c == L'\\') slash = c;
+
+						}
+
+						if (slash) name = slash + 1;
+
+						char narrow[128];
+
+						if (WideCharToMultiByte (CP_UTF8, 0, name, -1, narrow, sizeof (narrow), nullptr, nullptr)) {
+
+							char buf[192];
+
+							snprintf (buf, sizeof (buf), "[FramePacer] main thread blocked in %s+0x%llx (phase=%d)\n",
+								narrow, (unsigned long long) (ctx.Rip - (DWORD64) mbi.AllocationBase), stallPhase.load ());
+							GateLogRaw (buf);
+
+						}
+
+					}
+
+				}
+
+			}
+
+			ResumeThread (mainThread);
+
+		}
+
+
+		void LogStall (const char* event, Uint64 value) {
+
+			Uint64 now = SDL_GetTicksNS ();
+			Uint64 last = lastStallLog.load ();
+
+			if (last && now - last < 1000000000ULL) return;
+
+			lastStallLog = now;
+
+			char buf[192];
+
+			snprintf (buf, sizeof (buf), "[FramePacer] %s: %.1f ms phase=%d\n",
+				event, (double) value / 1e6, stallPhase.load ());
+
+			GateLogRaw (buf);
+
+		}
+
+
+		void OnSwapBegin () {
+
+			if (gateActive) stallPhase = 3;
+
+		}
+
+
 		// Measured period when sane, SDL display mode value otherwise
 		Uint64 EffectivePeriod () {
 
@@ -1065,7 +1265,21 @@ namespace lime {
 
 		bool GLReady () {
 
-			return SDL_GL_GetCurrentContext () != nullptr;
+			void* ctx = (void*) SDL_GL_GetCurrentContext ();
+
+			// a recreated context invalidates every query name; never reuse them
+			if (ctx != lastGlContext) {
+
+				lastGlContext = ctx;
+				gpuQueryInit = false;
+				gpuQueryActive = false;
+				gpuQueries[0] = 0;
+				gpuQueries[1] = 0;
+				gpuQueries[2] = 0;
+
+			}
+
+			return ctx != nullptr;
 
 		}
 
@@ -1170,12 +1384,13 @@ namespace lime {
 
 			if (!gpuQueryActive) return;
 
-			if (GLReady ()) {
+			if (!GLReady ()) return;
 
-				glEndQuery (GL_TIME_ELAPSED);
-				gpuQueryActive = false;
+			// GLReady drops the query when the context changed underneath us
+			if (!gpuQueryActive) return;
 
-			}
+			glEndQuery (GL_TIME_ELAPSED);
+			gpuQueryActive = false;
 
 		}
 
@@ -1183,6 +1398,17 @@ namespace lime {
 		bool WaitFrameStart (Uint64 target) {
 
 			lastTarget = target;
+
+			heartbeat = SDL_GetTicksNS ();
+
+			// kill switch for A/B: the whole pacer (anchor included) stays off
+			if (pacerOff) {
+
+				gateActive = false;
+
+				return false;
+
+			}
 
 			bool fs = sdlWindow && (SDL_GetWindowFlags (sdlWindow) & SDL_WINDOW_FULLSCREEN) != 0;
 
@@ -1195,9 +1421,33 @@ namespace lime {
 
 			fullscreenMode = fs;
 
-			LogStateHeartbeat ();
-
 			Uint64 now = SDL_GetTicksNS ();
+
+			heartbeat = now;
+
+			// a load or GC stall must not inherit the old grid: start this frame
+			// right away and re-anchor on the next one (input is already queued).
+			// display reconfiguration is skipped too, it can block while the mode
+			// the load left behind is still settling
+			Uint64 gap = lastStartNs ? now - lastStartNs : 0;
+
+			lastStartNs = now;
+
+			if (gap > 50000000ULL) {
+
+				if (gap > 200000000ULL) LogStall ("long frame gap", gap);
+
+				nextTarget = 0;
+				gateActive = false;
+				frameStartT0 = now;
+				swapEndAt = 0;
+				stallPhase = 0;
+
+				return true;
+
+			}
+
+			LogStateHeartbeat ();
 
 			// display checks run even when pacing is off (3 s poll, first bind retries every frame)
 			if (!lastMonitor || rebindHint.load () || now - lastCheckNs >= 3000000000ULL) {
@@ -1337,6 +1587,23 @@ namespace lime {
 			if (start > now) {
 
 				Uint64 wait = start - now;
+				Uint64 horizon = grid + period;
+
+				// stale grid or bad anchor data: never hold the main thread on it
+				if (wait > horizon) {
+
+					LogStall ("frame start wait too far", wait);
+
+					nextTarget = 0;
+					gateActive = false;
+					frameStartT0 = now;
+
+					return true;
+
+				}
+
+				stallPhase = 1;
+				heartbeat = SDL_GetTicksNS ();
 
 				if (wait > SPIN_NS) SDL_DelayNS (wait - SPIN_NS);
 
@@ -1344,11 +1611,15 @@ namespace lime {
 
 				}
 
+				stallPhase = 0;
+
 			}
 
 			frameStartT0 = SDL_GetTicksNS ();
 			gateActive = true;
 			swapEndAt = 0;
+			heartbeat = frameStartT0;
+			stallPhase = 0;
 
 			BeginGpuQuery ();
 
@@ -1449,10 +1720,25 @@ namespace lime {
 			if (readyAt < deadline) {
 
 				Uint64 wait = deadline - readyAt;
+				Uint64 horizon = framePeriod * (Uint64) gridStep + framePeriod;
 
-				if (wait > SPIN_NS) SDL_DelayNS (wait - SPIN_NS);
+				// never park the main thread on a stale target
+				if (wait > horizon) {
 
-				while (SDL_GetTicksNS () < deadline) {
+					LogStall ("swap deadline too far", wait);
+
+				} else {
+
+					stallPhase = 2;
+					heartbeat = readyAt;
+
+					if (wait > SPIN_NS) SDL_DelayNS (wait - SPIN_NS);
+
+					while (SDL_GetTicksNS () < deadline) {
+
+					}
+
+					stallPhase = 0;
 
 				}
 
@@ -1461,6 +1747,7 @@ namespace lime {
 			if (readyAt > deadline) lateCount++;
 
 			swapStartAt = SDL_GetTicksNS ();
+			heartbeat = swapStartAt;
 
 			return true;
 
@@ -1470,6 +1757,9 @@ namespace lime {
 		// called right after SDL_GL_SwapWindow; the time spent there is the real
 		// submit latency, not the frame body's
 		void OnSwapEnd (Uint64 now) {
+
+			stallPhase = 0;
+			heartbeat = now;
 
 			if (!gateActive || !swapStartAt) return;
 
@@ -1518,6 +1808,9 @@ namespace lime {
 
 
 		void OnFrameEnd (Uint64 frameEnd) {
+
+			heartbeat = frameEnd;
+			stallPhase = 0;
 
 			if (!gateActive || !readyAt || readyAt < frameStartT0) return;
 
@@ -1616,6 +1909,12 @@ namespace lime {
 
 			}
 
+			if (pacer->watchdogThread && pacer->watchdogThread->joinable ()) {
+
+				pacer->watchdogThread->join ();
+
+			}
+
 			pacer->CloseCurrentAdapter ();
 			delete pacer;
 
@@ -1662,6 +1961,13 @@ namespace lime {
 		if (!impl) return true;
 
 		return ((FramePacerImpl*) impl)->ShouldSwap (now);
+
+	}
+
+
+	void FramePacer::OnSwapBegin () {
+
+		if (impl) ((FramePacerImpl*) impl)->OnSwapBegin ();
 
 	}
 
@@ -1719,6 +2025,12 @@ namespace lime {
 	bool FramePacer::ShouldSwap (Uint64 now) {
 
 		return true;
+
+	}
+
+
+	void FramePacer::OnSwapBegin () {
+
 
 	}
 

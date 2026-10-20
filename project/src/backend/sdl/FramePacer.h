@@ -21,6 +21,8 @@ namespace lime {
 
 			bool ShouldSwap (Uint64 now);
 
+			void OnSwapBegin ();
+
 			void OnSwapEnd (Uint64 now);
 
 			void OnFrameEnd (Uint64 frameEnd);
