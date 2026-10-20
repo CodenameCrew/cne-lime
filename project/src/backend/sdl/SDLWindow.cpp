@@ -376,6 +376,8 @@ namespace lime {
 
 				SDL_GL_SwapWindow (sdlWindow);
 
+				if (framePacer) framePacer->OnSwapEnd (SDL_GetTicksNS ());
+
 			}
 
 		}

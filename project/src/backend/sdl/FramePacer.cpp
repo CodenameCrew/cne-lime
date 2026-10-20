@@ -1,4 +1,5 @@
 #include "FramePacer.h"
+#include "../../graphics/opengl/OpenGLBindings.h"
 
 #ifdef HX_WINDOWS
 
@@ -53,16 +54,17 @@ namespace lime {
 
 	static const Uint64 ANCHOR_STALE_NS = 200000000ULL;
 	static const Uint64 SPIN_NS = 1000000ULL; // SDL sleeps on a high-res waitable timer; 1 ms covers the wake
-	static const Uint64 DEFAULT_EPS_NS = 400000ULL;
 
-	// D3DKMT wakes after the edge, so the PLL phase is late by the wake latency;
-	// pad the lead when the hardware clock is unavailable
+	// hardcoded tuning -- edit and rebuild (lime rebuild is ~10 s)
+	// present lead before the predicted edge; lower = tear line closer to the bottom
+	static const Uint64 DEFAULT_EPS_NS = 400000ULL;
+	// D3DKMT wakes after the edge; PLL_EPS carries the wake latency, the bias shifts the phase
 	static const Uint64 PLL_EPS_NS = 600000ULL;
 	static const Uint64 PLL_BIAS_NS = 200000ULL;
-
-	// a blocking GPU readback kills the CPU/GPU overlap; this budget lets the
-	// frame body fit one grid (LIME_GPU_MARGIN_NS overrides it)
-	static const Uint64 DEFAULT_GPU_MARGIN_NS = 2500000ULL;
+	// windowed: DWM latches before the vblank, so hit the frame well before the edge
+	static const Uint64 WINDOWED_EPS_NS = 1500000ULL;
+	// GPU budget on top of the CPU body; lower = line closer to the bottom, higher = more headroom
+	static const Uint64 DEFAULT_GPU_MARGIN_NS = 1000000ULL;
 	static const Uint64 STAT_WINDOW_NS = 10000000000ULL;
 
 
@@ -122,6 +124,12 @@ namespace lime {
 		Uint64 frameStartT0;
 		Uint64 readyAt;
 		Uint64 presentAt;
+		Uint64 swapStartAt;
+		Uint64 swapEndAt;
+		Uint64 swapLead;
+		Uint64 swapRing[32];
+		int swapIndex;
+		int swapSamples;
 		Uint64 lastPresentAt;
 		long long presentErr;
 		double bodyEst;
@@ -129,12 +137,16 @@ namespace lime {
 		int bodyIndex;
 		int bodyCount;
 		Uint64 gpuMargin;
-		Uint64 pllBias;
+		Uint64 baseMargin;
 		Uint64 frameBase;
 		bool prevAnchorHw;
-		Uint64 epsFixed;
-		bool epsEnv;
-		bool pacerOff;
+		GLuint gpuQueries[3];
+		bool gpuQueryInit;
+		bool gpuQueryActive;
+		int gpuQueryIndex;
+		int gpuSamples;
+		double gpuBody;
+		double gpuRef;
 		Uint64 lastTarget;
 		bool pacedLogged;
 
@@ -202,20 +214,28 @@ namespace lime {
 			frameStartT0 = 0;
 			readyAt = 0;
 			presentAt = 0;
+			swapStartAt = 0;
+			swapEndAt = 0;
+			swapLead = 300000ULL;
+			swapIndex = 0;
+			swapSamples = 0;
 			lastPresentAt = 0;
 			presentErr = 0;
 			bodyEst = 3000000.0;
 			bodyIndex = 0;
 			bodyCount = 0;
 			gpuMargin = DEFAULT_GPU_MARGIN_NS;
-			pllBias = PLL_BIAS_NS;
+			baseMargin = DEFAULT_GPU_MARGIN_NS;
 			frameBase = 0;
 			prevAnchorHw = false;
-			epsFixed = DEFAULT_EPS_NS;
-			epsEnv = false;
-			pacerOff = getenv ("LIME_NO_SCANLINE_GATE") != nullptr;
 			lastTarget = 0;
 			pacedLogged = false;
+			gpuQueryInit = false;
+			gpuQueryActive = false;
+			gpuQueryIndex = 0;
+			gpuSamples = 0;
+			gpuBody = 0.0;
+			gpuRef = 0.0;
 
 			swapCount = 0;
 			tearCount = 0;
@@ -227,37 +247,6 @@ namespace lime {
 			ivCount = 0;
 			statWindow = 0;
 
-			const char* eps = getenv ("LIME_PRESENT_LEAD_NS");
-
-			if (eps) {
-
-				epsFixed = (Uint64) strtoull (eps, nullptr, 10);
-				epsEnv = true;
-
-				if (epsFixed < 50000ULL) epsFixed = 50000ULL;
-				if (epsFixed > 2000000ULL) epsFixed = 2000000ULL;
-
-			}
-
-			const char* margin = getenv ("LIME_GPU_MARGIN_NS");
-
-			if (margin) {
-
-				gpuMargin = (Uint64) strtoull (margin, nullptr, 10);
-
-				if (gpuMargin > 8000000ULL) gpuMargin = 8000000ULL;
-
-			}
-
-			const char* bias = getenv ("LIME_VBLANK_BIAS_NS");
-
-			if (bias) {
-
-				pllBias = (Uint64) strtoull (bias, nullptr, 10);
-
-				if (pllBias > 2000000ULL) pllBias = 2000000ULL;
-
-			}
 
 			HMODULE gdi = GetModuleHandleW (L"gdi32.dll");
 
@@ -284,6 +273,10 @@ namespace lime {
 				qpcFreq = (Uint64) freq.QuadPart;
 
 			}
+
+			for (int i = 0; i < 3; i++) gpuQueries[i] = 0;
+
+			for (int i = 0; i < 32; i++) swapRing[i] = 0;
 
 			for (int i = 0; i < 64; i++) bodyRing[i] = 0;
 
@@ -846,9 +839,7 @@ namespace lime {
 
 		Uint64 EffectiveEps () {
 
-			if (epsEnv) return epsFixed;
-
-			return anchorHw.load () ? epsFixed : (epsFixed > PLL_EPS_NS ? epsFixed : PLL_EPS_NS);
+			return anchorHw.load () ? DEFAULT_EPS_NS : PLL_EPS_NS;
 
 		}
 
@@ -888,6 +879,16 @@ namespace lime {
 			bodyCount = 0;
 			frameBase = 0;
 			pacedLogged = false;
+			gpuBody = 0.0;
+			gpuRef = 0.0;
+			gpuSamples = 0;
+			gpuMargin = baseMargin;
+
+			swapStartAt = 0;
+			swapEndAt = 0;
+			swapLead = 300000ULL;
+			swapIndex = 0;
+			swapSamples = 0;
 
 			swapCount = 0;
 			tearCount = 0;
@@ -959,10 +960,11 @@ namespace lime {
 			char buf[224];
 
 			snprintf (buf, sizeof (buf),
-				"[FramePacer] paced: anchor=%s P=%.3f ms eps=%.3f ms margin=%.3f ms step=%d\n",
+				"[FramePacer] paced: anchor=%s P=%.3f ms eps=%.3f ms swap=%.3f ms margin=%.3f ms step=%d\n",
 				anchorHw.load () ? "hw" : "pll",
 				framePeriod / 1e6,
 				frameEps / 1e6,
+				swapLead / 1e6,
 				gpuMargin / 1e6,
 				gridStep);
 
@@ -1024,7 +1026,7 @@ namespace lime {
 			char buf[384];
 
 			snprintf (buf, sizeof (buf),
-				"[FramePacer] state | fs=%d tgt=%.0f step=%d anchor=%s P=%.3f eps=%.3f body=%.2f margin=%.2f | fps=%.1f swaps=%u tear=%u late=%u err avg=%.2f min=%.2f max=%.2f | iv50=%.2f iv99=%.2f ivmax=%.2f\n",
+				"[FramePacer] state | fs=%d tgt=%.0f step=%d anchor=%s P=%.3f eps=%.3f body=%.2f margin=%.2f gpu=%.2f swap=%.2f | fps=%.1f swaps=%u tear=%u late=%u err avg=%.2f min=%.2f max=%.2f | iv50=%.2f iv99=%.2f ivmax=%.2f\n",
 				fullscreenMode ? 1 : 0,
 				tgt,
 				gridStep,
@@ -1033,6 +1035,8 @@ namespace lime {
 				frameEps / 1e6,
 				bodyEst / 1e6,
 				gpuMargin / 1e6,
+				gpuBody / 1e6,
+				swapLead / 1e6,
 				fps,
 				swapCount,
 				tearCount,
@@ -1055,6 +1059,123 @@ namespace lime {
 			ivIndex = 0;
 			ivCount = 0;
 			statWindow = now;
+
+		}
+
+
+		bool GLReady () {
+
+			return SDL_GL_GetCurrentContext () != nullptr;
+
+		}
+
+
+		// GL_TIME_ELAPSED spans the frame on the GPU clock; the 1-2 frame
+		// delayed result is a slow drift reference, never a blocking read
+		void UpdateGpuBody (Uint64 ns) {
+
+			if (ns < 100000ULL || ns > 50000000ULL) return;
+
+			gpuBody = gpuBody > 0.0 ? gpuBody * 7.0 / 8.0 + (double) ns / 8.0 : (double) ns;
+
+			if (gpuSamples < 32) {
+
+				if (++gpuSamples == 32) gpuRef = gpuBody;
+				return;
+
+			}
+
+			if (!gpuRef) return;
+
+			double delta = gpuBody - gpuRef;
+
+			if (delta > 4000000.0) delta = 4000000.0;
+			if (delta < -4000000.0) delta = -4000000.0;
+
+			double target = (double) baseMargin + delta;
+
+			if (target < 150000.0) target = 150000.0;
+			if (target > 8000000.0) target = 8000000.0;
+
+			// windowed: the GPU tail lands after the CPU body; keep a fraction of
+			// the GPU time as tail allowance instead of only tracking its delta
+			if (!fullscreenMode) {
+
+				double floor = gpuBody * 0.25;
+
+				if (floor < 400000.0) floor = 400000.0;
+				if (target < floor) target = floor;
+
+			}
+
+			double step = target - (double) gpuMargin;
+
+			// scene spikes jump the margin straight to the new target; the old
+			// 10 us/frame slew took ~1 s and parked the tear line mid-screen
+			if (step > 200000.0) {
+
+				gpuMargin = (Uint64) target;
+				return;
+
+			}
+
+			if (step > 10000.0) step = 10000.0;
+			if (step < -10000.0) step = -10000.0;
+
+			gpuMargin = (Uint64) ((double) gpuMargin + step);
+
+		}
+
+
+		void BeginGpuQuery () {
+
+			if (!GLReady ()) return;
+
+			if (!gpuQueryInit) {
+
+				glGenQueries (3, gpuQueries);
+				gpuQueryInit = true;
+
+			}
+
+			if (gpuQueryActive) {
+
+				glEndQuery (GL_TIME_ELAPSED);
+				gpuQueryActive = false;
+
+			}
+
+			GLuint q = gpuQueries[gpuQueryIndex];
+			GLuint avail = 0;
+
+			glGetQueryObjectuiv (q, GL_QUERY_RESULT_AVAILABLE, &avail);
+
+			if (avail) {
+
+				GLuint64 ns = 0;
+
+				glGetQueryObjectui64v (q, GL_QUERY_RESULT, &ns);
+				UpdateGpuBody ((Uint64) ns);
+
+			}
+
+			glBeginQuery (GL_TIME_ELAPSED, q);
+			gpuQueryActive = true;
+			gpuQueryIndex = (gpuQueryIndex + 1) % 3;
+
+		}
+
+
+		void EndGpuQuery () {
+
+			if (!gpuQueryActive) return;
+
+			if (GLReady ()) {
+
+				glEndQuery (GL_TIME_ELAPSED);
+				gpuQueryActive = false;
+
+			}
 
 		}
 
@@ -1088,14 +1209,11 @@ namespace lime {
 
 			gateActive = false;
 
-			if (!sdlWindow || !openAdapter || !waitVBlank || pacerOff) return false;
+			if (!sdlWindow || !openAdapter || !waitVBlank) return false;
 
 			Uint64 alive = vbAlive.load ();
 
 			if (!alive || now - alive > ANCHOR_STALE_NS) return false;
-
-			// windowed: DWM decides when the frame is latched, the time-based cap owns the rate
-			if (!fullscreenMode) return false;
 
 			// Never pace on top of vsync
 			int swapInterval = 0;
@@ -1105,10 +1223,6 @@ namespace lime {
 			Uint64 period = PacingPeriod ();
 
 			if (!period) return false;
-
-			Uint64 base = anchorEdge.load ();
-
-			if (!base) return false;
 
 			// cap below the refresh rate: present every whole number of refreshes
 			int step = 1;
@@ -1124,6 +1238,24 @@ namespace lime {
 
 			}
 
+			// windowed: a free-running cap beats against DWM's composition grid;
+			// only whole-refresh caps can be locked to it
+			bool windowed = !fullscreenMode;
+
+			if (windowed && (target == 0 || std::fabs ((double) target - (double) step * (double) period) > (double) period / 32.0)) {
+
+				framePeriod = period;
+				frameEps = 0;
+				gridStep = 1;
+
+				return false;
+
+			}
+
+			Uint64 base = anchorEdge.load ();
+
+			if (!base) return false;
+
 			bool hw = anchorHw.load ();
 
 			if (hw != prevAnchorHw) {
@@ -1134,7 +1266,7 @@ namespace lime {
 			}
 
 			// D3DKMT wakes after the edge; shift the predicted clock by the mean wake
-			if (!hw && base > pllBias) base -= pllBias;
+			if (!hw && base > PLL_BIAS_NS) base -= PLL_BIAS_NS;
 
 			gridStep = step;
 			framePeriod = period;
@@ -1157,9 +1289,18 @@ namespace lime {
 
 			targetEdge = edge;
 
-			Uint64 eps = EffectiveEps ();
+			Uint64 eps;
 
-			if (!epsEnv) {
+			if (windowed) {
+
+				eps = WINDOWED_EPS_NS;
+
+				// keep at least half a refresh for the frame body
+				if (eps > period / 2) eps = period / 2;
+
+			} else {
+
+				eps = EffectiveEps ();
 
 				// body over one grid: the extra lead is the overlap the next frame
 				// needs to start before this frame's GPU tail finishes
@@ -1173,16 +1314,18 @@ namespace lime {
 
 				}
 
-				if (eps > 3000000ULL) eps = 3000000ULL;
-
 			}
+
+			if (eps > 3000000ULL) eps = 3000000ULL;
 
 			frameEps = eps;
 
-			Uint64 lead = (Uint64) bodyEst + eps;
+			// windowed: the swap is a blocking DWM copy; its cost is part of the lead
+			Uint64 swapPad = fullscreenMode ? 0 : swapLead;
+			Uint64 lead = (Uint64) bodyEst + eps + swapPad;
 
 			if (lead < 300000ULL) lead = 300000ULL;
-			if (lead > grid + eps) lead = grid + eps;
+			if (lead > grid + eps + swapPad) lead = grid + eps + swapPad;
 
 			// start early enough for the body to end eps before the edge; never
 			// start before the previous present, that would be two frames in flight
@@ -1205,6 +1348,9 @@ namespace lime {
 
 			frameStartT0 = SDL_GetTicksNS ();
 			gateActive = true;
+			swapEndAt = 0;
+
+			BeginGpuQuery ();
 
 			LogPaced ();
 
@@ -1213,13 +1359,90 @@ namespace lime {
 		}
 
 
+		// windowed swap blocks on the driver/DWM copy; P90 keeps the lead honest
+		// without paying for the rare multi-ms spike every frame
+		void UpdateSwapLead (Uint64 swap) {
+
+			if (swap < 20000ULL || swap > 4000000ULL) return;
+
+			swapRing[swapIndex] = swap;
+			swapIndex = (swapIndex + 1) & 31;
+
+			if (swapSamples < 32) swapSamples++;
+
+			Uint64 tmp[32];
+
+			for (int i = 0; i < swapSamples; i++) tmp[i] = swapRing[i];
+
+			for (int i = 1; i < swapSamples; i++) {
+
+				Uint64 v = tmp[i];
+				int j = i - 1;
+
+				while (j >= 0 && tmp[j] > v) {
+
+					tmp[j + 1] = tmp[j];
+					j--;
+
+				}
+
+				tmp[j + 1] = v;
+
+			}
+
+			int idx = swapSamples * 95 / 100;
+
+			if (idx >= swapSamples) idx = swapSamples - 1;
+			if (idx < 0) idx = 0;
+
+			swapLead = tmp[idx] + 100000ULL;
+
+			if (swapLead < 100000ULL) swapLead = 100000ULL;
+			if (swapLead > 1500000ULL) swapLead = 1500000ULL;
+
+		}
+
+
+		void RecordPresent (Uint64 t) {
+
+			if (lastPresentAt) {
+
+				Uint64 iv = t - lastPresentAt;
+
+				if (iv > 0 && iv < 1000000000ULL) {
+
+					ivRing[ivIndex] = (Uint32) iv;
+					ivIndex = (ivIndex + 1) & 255;
+
+					if (ivCount < 256) ivCount++;
+
+				}
+
+			}
+
+			lastPresentAt = t;
+
+		}
+
+
 		bool ShouldSwap (Uint64 now) {
 
-			if (!gateActive) return true;
+			if (!gateActive) {
 
-			// present just before the edge: an on-time flip tears at the bottom
-			// (or not at all), a post-edge flip costs the whole frame
-			Uint64 deadline = (targetEdge > frameEps) ? targetEdge - frameEps : targetEdge;
+				// unpaced (windowed limiter, vsync): stats still need the real cadence
+				RecordPresent (SDL_GetTicksNS ());
+				swapCount++;
+
+				return true;
+
+			}
+
+			EndGpuQuery ();
+
+			// windowed SwapBuffers blocks on the DWM copy after this returns; the
+			// deadline is where the swap has to start, not where the frame ends
+			Uint64 back = frameEps + (fullscreenMode ? 0 : swapLead);
+			Uint64 deadline = (targetEdge > back) ? targetEdge - back : 0;
 
 			readyAt = SDL_GetTicksNS ();
 
@@ -1235,46 +1458,26 @@ namespace lime {
 
 			}
 
-			presentAt = SDL_GetTicksNS ();
-			presentErr = (long long) presentAt - (long long) targetEdge;
+			if (readyAt > deadline) lateCount++;
 
-			if (presentErr > 0) tearCount++;
-			else if (readyAt > deadline) lateCount++;
-
-			if (lastPresentAt) {
-
-				Uint64 iv = presentAt - lastPresentAt;
-
-				if (iv > 0 && iv < 1000000000ULL) {
-
-					ivRing[ivIndex] = (Uint32) iv;
-					ivIndex = (ivIndex + 1) & 255;
-
-					if (ivCount < 256) ivCount++;
-
-				}
-
-			}
-
-			lastPresentAt = presentAt;
-
-			errSum += presentErr;
-
-			if (swapCount == 0) {
-
-				errMin = presentErr;
-				errMax = presentErr;
-
-			} else {
-
-				if (presentErr < errMin) errMin = presentErr;
-				if (presentErr > errMax) errMax = presentErr;
-
-			}
-
-			swapCount++;
+			swapStartAt = SDL_GetTicksNS ();
 
 			return true;
+
+		}
+
+
+		// called right after SDL_GL_SwapWindow; the time spent there is the real
+		// submit latency, not the frame body's
+		void OnSwapEnd (Uint64 now) {
+
+			if (!gateActive || !swapStartAt) return;
+
+			if (now <= swapStartAt || now - swapStartAt >= 20000000ULL) return;
+
+			swapEndAt = now;
+
+			if (!fullscreenMode) UpdateSwapLead (now - swapStartAt);
 
 		}
 
@@ -1325,7 +1528,7 @@ namespace lime {
 
 			if (bodyCount < 64) bodyCount++;
 
-			bodyEst = BodyPercentile (0.90) + (double) gpuMargin;
+			bodyEst = BodyPercentile (fullscreenMode ? 0.90 : 0.95) + (double) gpuMargin;
 
 			if (framePeriod) {
 
@@ -1336,6 +1539,41 @@ namespace lime {
 			}
 
 			if (bodyEst < 300000.0) bodyEst = 300000.0;
+
+			// ContextFlip reports the swap end; fall back to the frame timestamp for
+			// paths that do not call it
+			Uint64 present = swapEndAt;
+
+			if (!present && frameEnd > swapStartAt && frameEnd - swapStartAt < 20000000ULL) {
+
+				present = frameEnd;
+
+				if (!fullscreenMode) UpdateSwapLead (frameEnd - swapStartAt);
+
+			}
+
+			presentAt = present ? present : frameEnd;
+			presentErr = (long long) presentAt - (long long) targetEdge;
+
+			if (presentErr > 0) tearCount++;
+
+			RecordPresent (presentAt);
+
+			errSum += presentErr;
+
+			if (swapCount == 0) {
+
+				errMin = presentErr;
+				errMax = presentErr;
+
+			} else {
+
+				if (presentErr < errMin) errMin = presentErr;
+				if (presentErr > errMax) errMax = presentErr;
+
+			}
+
+			swapCount++;
 
 			// one present per grid point: the next target is the one after this
 			// edge, and a late frame re-anchors on the edge after the present
@@ -1428,6 +1666,13 @@ namespace lime {
 	}
 
 
+	void FramePacer::OnSwapEnd (Uint64 now) {
+
+		if (impl) ((FramePacerImpl*) impl)->OnSwapEnd (now);
+
+	}
+
+
 
 	void FramePacer::OnFrameEnd (Uint64 frameEnd) {
 
@@ -1474,6 +1719,12 @@ namespace lime {
 	bool FramePacer::ShouldSwap (Uint64 now) {
 
 		return true;
+
+	}
+
+
+	void FramePacer::OnSwapEnd (Uint64 now) {
+
 
 	}
 
