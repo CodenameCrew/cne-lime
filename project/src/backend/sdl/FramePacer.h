@@ -23,8 +23,6 @@ namespace lime {
 
 			void OnFrameEnd (Uint64 frameEnd);
 
-			bool ShouldDrainGpu ();
-
 		private:
 
 			void* impl;

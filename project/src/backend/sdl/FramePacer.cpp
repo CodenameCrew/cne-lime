@@ -5,12 +5,13 @@
 #include <windows.h>
 #include <winuser.h>
 #include <wingdi.h>
+#include <dwmapi.h>
 
 #include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
-#include <cwchar>
+#include <cstring>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -47,42 +48,50 @@ namespace lime {
 	typedef NTSTATUS (APIENTRY *FP_OpenAdapterFromLuidFunc) (FP_OpenAdapterFromLuid*);
 	typedef NTSTATUS (APIENTRY *FP_CloseAdapterFunc) (FP_CloseAdapter*);
 	typedef NTSTATUS (APIENTRY *FP_WaitForVerticalBlankEventFunc) (FP_WaitForVerticalBlankEvent*);
+	typedef HRESULT (WINAPI *FP_DwmGetCompositionTimingInfoFunc) (HWND, DWM_TIMING_INFO*);
 
 
-	static const Uint64 ANCHOR_STALE_NS = 200000000ULL; // degrade after 200 ms without vblank
-	static const Uint64 SPIN_MARGIN_NS = 1000000ULL;    // busy-wait margin, as in SDLApplication
+	static const Uint64 ANCHOR_STALE_NS = 200000000ULL;
+	static const Uint64 SPIN_NS = 1000000ULL; // SDL sleeps on a high-res waitable timer; 1 ms covers the wake
+	static const Uint64 DEFAULT_EPS_NS = 400000ULL;
 
-	static const double EPS_MIN = 600000.0;    // submission lead time bounds
-	static const double EPS_MAX = 4000000.0;
-	static const double EPS_START = 1500000.0;
+	// D3DKMT wakes after the edge, so the PLL phase is late by the wake latency;
+	// pad the lead when the hardware clock is unavailable
+	static const Uint64 PLL_EPS_NS = 600000ULL;
+	static const Uint64 PLL_BIAS_NS = 200000ULL;
 
-	static const long long EDGE_MARGIN_NS = 800000LL; // fullscreen: body finish lands this far before the edge (covers the anchor publication delay)
-
-	// scanline gate (fullscreen): present inside the blanking interval; windowed
-	// submits pre-boundary (DWM composites on its own schedule)
-	static const Uint64 GATE_SLEEP_EDGE_NS = 2500000ULL;    // busy-poll the anchor publication within this window before the edge
+	// a blocking GPU readback kills the CPU/GPU overlap; this budget lets the
+	// frame body fit one grid (LIME_GPU_MARGIN_NS overrides it)
+	static const Uint64 DEFAULT_GPU_MARGIN_NS = 2500000ULL;
+	static const Uint64 STAT_WINDOW_NS = 10000000000ULL;
 
 
 	struct FramePacerImpl {
 
-		// gdi32 entry points
+		// gdi32 / dwmapi entry points
 		FP_OpenAdapterFromLuidFunc openAdapter;
 		FP_CloseAdapterFunc closeAdapter;
 		FP_WaitForVerticalBlankEventFunc waitVBlank;
+		FP_DwmGetCompositionTimingInfoFunc dwmTiming;
+		Uint64 qpcFreq;
 
-		// window / display target (game thread writes, anchor reads)
+		// window / display target
 		SDL_Window* sdlWindow;
 		HWND hwndValue;
 		Uint64 periodNs;
 		std::atomic<Uint32> requestGen;
+		std::atomic<bool> useDwm;
 
-		// anchor thread output
-		std::atomic<Uint64> vbLast;      // QPC time of the last real vblank
-		std::atomic<Uint64> vbAlive;     // anchor heartbeat
-		std::atomic<Uint64> realPeriod;  // measured vblank interval (smoothed)
-		std::atomic<bool> rebindHint;    // anchor->game: measured period disagrees with the CCD mode
-		std::atomic<bool> displayBound;  // game->anchor: first stable CCD resolution done
-		std::atomic<Uint64> periodOverride;  // anchor->game: CCD reading proven wrong, use hardware-measured period
+		// anchor thread output (SDL clock)
+		std::atomic<Uint64> anchorEdge;    // last known vblank edge
+		std::atomic<Uint64> anchorPeriod;  // hardware period when it is trusted
+		std::atomic<bool> anchorHw;        // edge/period came from DWM, not a wake
+		std::atomic<Uint64> vbAlive;
+		std::atomic<Uint64> predEdge;      // PLL estimate of the last wake edge
+		std::atomic<Uint64> realPeriod;
+		std::atomic<bool> rebindHint;
+		std::atomic<bool> displayBound;
+		std::atomic<Uint64> periodOverride;
 
 		// anchor thread state
 		std::thread* anchorThread;
@@ -92,57 +101,54 @@ namespace lime {
 		bool adapterOpen;
 		Uint32 appliedLocal;
 		int failStreak;
-		int divergeCount;                // anchor thread: consecutive period mismatches
-		int divergeRound;                // anchor thread: mismatch rounds AFTER a forced rebind
+		int divergeCount;
+		int divergeRound;
 		Uint64 lastVbForPeriod;
-		Uint64 lastRebindNs;             // game thread: cooldown between rebind-hint consumptions
+		Uint64 lastRebindNs;
+		int hwFailStreak;
 
-		// game thread pacing state
-		DWORD lastRefreshRate;           // CCD-reported frequency of the bound display
+		// game thread pacing
+		DWORD lastRefreshRate;
 		HMONITOR lastMonitor;
-		bool fullscreenMode;             // SDL_WINDOW_FULLSCREEN: scanline gate vs DWM-friendly submission
-		Uint64 swapWaitNs;               // game thread: edge-gate wait accumulated this frame
-		Uint64 lastCheckNs;              // game thread: last display-environment poll
-		Uint64 nextBoundary;
+		bool fullscreenMode;
+		bool prevFullscreenMode;
+		bool gateActive;
+		Uint64 lastCheckNs;
+		Uint64 framePeriod;
+		Uint64 frameEps;
+		Uint64 targetEdge;
+		Uint64 nextTarget;
+		int gridStep;
 		Uint64 frameStartT0;
-		double rEst;                     // smoothed frame-body duration
-		double eps;                      // submission lead time (adaptive)
-		int missRing[32];                // recent late-submission history
-		int missIndex;
-		int noMissRun;
-		bool gateActive;                 // gated submission (unlimited or cap above refresh)
-		Uint64 lastPresented;            // gate mode: last presented boundary
-		Uint32 swapCount;                // game thread: presentations since last heartbeat
-		Uint32 gateHits;                 // game thread: raster polls that caught the edge
-		Uint32 gateMisses;               // game thread: raster polls that missed it
-		Uint64 lastGateStart;            // gate mode: render loop cap anchor
-		bool scanlineDisabled;           // LIME_NO_SCANLINE_GATE escape hatch
-		bool gateFirstHit;               // one-shot log: first successful edge poll
-		Uint64 lastGateHash;             // last-logged state signature
-		Uint64 lastGateLogTime;          // throttle for state logs
-		int gridK;                       // windowed: boundaries per presentation (owned by gridN)
-		bool fullscreenTear;             // LIME_NO_FULLSCREEN_TEAR pin: false reverts to the edge grid even over budget
-		bool tearActive;                 // live over-budget verdict (0.9P in / 0.8P out hysteresis)
-		bool freeRun;                    // fullscreenTear && tearActive: the single free-run verdict ALL consumers share
-		bool overloadLogged;             // one-shot log per free-run episode
-		bool probeFrame;                 // free-run probe: this frame runs the full edge grid to test re-entry
-		int probePasses;                 // consecutive probe frames that caught their edge (2 = leave free-run)
-		Uint64 lastProbeNs;              // probe scheduling (one probe per second while free-running)
-		Uint64 probeEdge;                // grid point the probe frame aligned its head to (verdict measured against THIS)
-		int deepMissStreak;              // consecutive deep misses (4 in a row = the grid cannot hold the body)
-		int gridN;                       // whole-number refresh divider: presentations every gridN periods
-		int gridMisses;                  // gear window: missed presentations
-		int gridSamples;                 // gear window: total presentations
-		Uint64 gridWindowStart;          // gear window start (2 s, swappy-style)
-		Uint64 lastGridChangeNs;         // cooldown between gear changes
-		double filteredBody;             // median-filtered frame body (spike-proof)
-		Uint64 bodyRing[5];              // ring feeding the body median
+		Uint64 readyAt;
+		Uint64 presentAt;
+		Uint64 lastPresentAt;
+		long long presentErr;
+		double bodyEst;
+		Uint64 bodyRing[64];
 		int bodyIndex;
-		bool prevFullscreenMode;         // present-path flip detection (one grid re-anchor)
-		Uint64 frameSerial;              // increments once per WaitFrameStart
-		Uint64 lastGridSampleFrame;      // frame already counted into the gear window
-		int slowBurst;                   // consecutive slow frames (raw evidence log)
-		Uint64 lastSlowLogNs;            // slow-frame log throttle
+		int bodyCount;
+		Uint64 gpuMargin;
+		Uint64 pllBias;
+		Uint64 frameBase;
+		bool prevAnchorHw;
+		Uint64 epsFixed;
+		bool epsEnv;
+		bool pacerOff;
+		Uint64 lastTarget;
+		bool pacedLogged;
+
+		// stats window
+		Uint32 swapCount;
+		Uint32 tearCount;
+		Uint32 lateCount;
+		long long errSum;
+		long long errMin;
+		long long errMax;
+		Uint32 ivRing[256];
+		Uint32 ivIndex;
+		Uint32 ivCount;
+		Uint64 statWindow;
 
 
 		FramePacerImpl () {
@@ -150,14 +156,20 @@ namespace lime {
 			openAdapter = nullptr;
 			closeAdapter = nullptr;
 			waitVBlank = nullptr;
+			dwmTiming = nullptr;
+			qpcFreq = 0;
 
 			sdlWindow = nullptr;
 			hwndValue = nullptr;
 			periodNs = 0;
 			requestGen = 0;
+			useDwm = false;
 
-			vbLast = 0;
+			anchorEdge = 0;
+			anchorPeriod = 0;
+			anchorHw = false;
 			vbAlive = 0;
+			predEdge = 0;
 			realPeriod = 0;
 			rebindHint = false;
 			displayBound = false;
@@ -174,54 +186,78 @@ namespace lime {
 			divergeRound = 0;
 			lastVbForPeriod = 0;
 			lastRebindNs = 0;
+			hwFailStreak = 0;
 
 			lastRefreshRate = 0;
 			lastMonitor = nullptr;
 			fullscreenMode = false;
-			swapWaitNs = 0;
-			lastCheckNs = 0;
-			nextBoundary = 0;
-			frameStartT0 = 0;
-			rEst = 0.0;
-			eps = EPS_START;
-			missIndex = 0;
-			noMissRun = 0;
-			gateActive = false;
-			lastPresented = 0;
-			swapCount = 0;
-			gateHits = 0;
-			gateMisses = 0;
-			lastGateStart = 0;
-			scanlineDisabled = getenv ("LIME_NO_SCANLINE_GATE") != nullptr;
-			gateFirstHit = false;
-			lastGateHash = 0;
-			lastGateLogTime = 0;
-			gridK = 1;
-			fullscreenTear = getenv ("LIME_NO_FULLSCREEN_TEAR") == nullptr;
-			tearActive = false;
-			freeRun = false;
-			overloadLogged = false;
-			probeFrame = false;
-			probePasses = 0;
-			lastProbeNs = 0;
-			probeEdge = 0;
-			deepMissStreak = 0;
-			gridN = 1;
-			gridMisses = 0;
-			gridSamples = 0;
-			gridWindowStart = 0;
-			lastGridChangeNs = 0;
-			filteredBody = 0.0;
-			bodyIndex = 0;
 			prevFullscreenMode = false;
-			frameSerial = 0;
-			lastGridSampleFrame = 0;
-			slowBurst = 0;
-			lastSlowLogNs = 0;
+			gateActive = false;
+			lastCheckNs = 0;
+			framePeriod = 0;
+			frameEps = 0;
+			targetEdge = 0;
+			nextTarget = 0;
+			gridStep = 1;
+			frameStartT0 = 0;
+			readyAt = 0;
+			presentAt = 0;
+			lastPresentAt = 0;
+			presentErr = 0;
+			bodyEst = 3000000.0;
+			bodyIndex = 0;
+			bodyCount = 0;
+			gpuMargin = DEFAULT_GPU_MARGIN_NS;
+			pllBias = PLL_BIAS_NS;
+			frameBase = 0;
+			prevAnchorHw = false;
+			epsFixed = DEFAULT_EPS_NS;
+			epsEnv = false;
+			pacerOff = getenv ("LIME_NO_SCANLINE_GATE") != nullptr;
+			lastTarget = 0;
+			pacedLogged = false;
 
-			for (int i = 0; i < 32; i++) missRing[i] = 0;
+			swapCount = 0;
+			tearCount = 0;
+			lateCount = 0;
+			errSum = 0;
+			errMin = 0;
+			errMax = 0;
+			ivIndex = 0;
+			ivCount = 0;
+			statWindow = 0;
 
-			for (int i = 0; i < 5; i++) bodyRing[i] = 0;
+			const char* eps = getenv ("LIME_PRESENT_LEAD_NS");
+
+			if (eps) {
+
+				epsFixed = (Uint64) strtoull (eps, nullptr, 10);
+				epsEnv = true;
+
+				if (epsFixed < 50000ULL) epsFixed = 50000ULL;
+				if (epsFixed > 2000000ULL) epsFixed = 2000000ULL;
+
+			}
+
+			const char* margin = getenv ("LIME_GPU_MARGIN_NS");
+
+			if (margin) {
+
+				gpuMargin = (Uint64) strtoull (margin, nullptr, 10);
+
+				if (gpuMargin > 8000000ULL) gpuMargin = 8000000ULL;
+
+			}
+
+			const char* bias = getenv ("LIME_VBLANK_BIAS_NS");
+
+			if (bias) {
+
+				pllBias = (Uint64) strtoull (bias, nullptr, 10);
+
+				if (pllBias > 2000000ULL) pllBias = 2000000ULL;
+
+			}
 
 			HMODULE gdi = GetModuleHandleW (L"gdi32.dll");
 
@@ -232,6 +268,26 @@ namespace lime {
 				waitVBlank = (FP_WaitForVerticalBlankEventFunc) GetProcAddress (gdi, "D3DKMTWaitForVerticalBlankEvent");
 
 			}
+
+			HMODULE dwm = LoadLibraryW (L"dwmapi.dll");
+
+			if (dwm) {
+
+				dwmTiming = (FP_DwmGetCompositionTimingInfoFunc) GetProcAddress (dwm, "DwmGetCompositionTimingInfo");
+
+			}
+
+			LARGE_INTEGER freq;
+
+			if (QueryPerformanceFrequency (&freq)) {
+
+				qpcFreq = (Uint64) freq.QuadPart;
+
+			}
+
+			for (int i = 0; i < 64; i++) bodyRing[i] = 0;
+
+			for (int i = 0; i < 256; i++) ivRing[i] = 0;
 
 		}
 
@@ -272,8 +328,6 @@ namespace lime {
 			SDL_PropertiesID props = SDL_GetWindowProperties (sdlWindow);
 			hwndValue = (HWND) SDL_GetPointerProperty (props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
 
-			// window rect isn't final at creation -- CheckDisplay does the first stable binding
-
 			if (!running) {
 
 				running = true;
@@ -295,24 +349,29 @@ namespace lime {
 			if (!monitor) return false;
 
 			MONITORINFOEXW mi;
+
 			mi.cbSize = sizeof (MONITORINFOEXW);
 
 			if (!GetMonitorInfoW (monitor, (LPMONITORINFO) &mi)) return false;
 
 			DEVMODEW dm;
+
 			dm.dmSize = sizeof (DEVMODEW);
 
 			if (!EnumDisplaySettingsW (mi.szDevice, ENUM_CURRENT_SETTINGS, &dm)) return false;
 
 			if (!(dm.dmFields & DM_DISPLAYFREQUENCY) || dm.dmDisplayFrequency < 20 || dm.dmDisplayFrequency > 1000) return false;
 
+			// DWM timing only describes the primary display
+			POINT origin = { 0, 0 };
+			HMONITOR primary = MonitorFromPoint (origin, MONITOR_DEFAULTTOPRIMARY);
+
+			useDwm = primary && monitor == primary;
+
 			// g-sync wobble must not wipe the period override; only a display move does
 			if (monitor != lastMonitor) {
 
 				periodOverride = 0;
-
-				// cadence state is per-display, must not survive a switch
-				ResetCadenceState ();
 
 			}
 
@@ -322,13 +381,12 @@ namespace lime {
 			requestGen++;
 			displayBound = true;
 
-			// new period invalidates the submission grid anchor
-			lastPresented = 0;
+			ResetPacing ();
 
-			char logBuf[128];
+			char logBuf[192];
 
-			snprintf (logBuf, sizeof (logBuf), "[FramePacer] display bound: %ls freq=%lu Hz\n",
-				mi.szDevice, (unsigned long) dm.dmDisplayFrequency);
+			snprintf (logBuf, sizeof (logBuf), "[FramePacer] display bound: %ls freq=%lu Hz dwm=%d\n",
+				mi.szDevice, (unsigned long) dm.dmDisplayFrequency, useDwm.load () ? 1 : 0);
 			GateLogRaw (logBuf);
 
 			return true;
@@ -388,11 +446,13 @@ namespace lime {
 			if (lastRefreshRate && !periodOverride.load ()) {
 
 				MONITORINFOEXW mi;
+
 				mi.cbSize = sizeof (MONITORINFOEXW);
 
 				if (GetMonitorInfoW (monitor, (LPMONITORINFO) &mi)) {
 
 					DEVMODEW dm;
+
 					dm.dmSize = sizeof (DEVMODEW);
 
 					if (EnumDisplaySettingsW (mi.szDevice, ENUM_CURRENT_SETTINGS, &dm)
@@ -422,6 +482,7 @@ namespace lime {
 			if (!monitor) return false;
 
 			MONITORINFOEXW mi;
+
 			mi.cbSize = sizeof (MONITORINFOEXW);
 
 			if (!GetMonitorInfoW (monitor, (LPMONITORINFO) &mi)) return false;
@@ -438,6 +499,7 @@ namespace lime {
 			for (UINT32 i = 0; i < pathCount; i++) {
 
 				DISPLAYCONFIG_SOURCE_DEVICE_NAME sourceName;
+
 				sourceName.header.type = DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME;
 				sourceName.header.size = sizeof (DISPLAYCONFIG_SOURCE_DEVICE_NAME);
 				sourceName.header.adapterId = paths[i].sourceInfo.adapterId;
@@ -448,6 +510,7 @@ namespace lime {
 				if (wcscmp (sourceName.viewGdiDeviceName, mi.szDevice) == 0) {
 
 					FP_OpenAdapterFromLuid oa;
+
 					oa.AdapterLuid = paths[i].sourceInfo.adapterId;
 
 					if (openAdapter (&oa) >= 0) {
@@ -457,6 +520,7 @@ namespace lime {
 						adapterOpen = true;
 						lastVbForPeriod = 0;
 						failStreak = 0;
+						hwFailStreak = 0;
 
 						// stale interval would trip the divergence check
 						realPeriod = 0;
@@ -485,7 +549,16 @@ namespace lime {
 		}
 
 
-		// Waits real vblank interrupts and publishes timestamps for extrapolation
+		Uint64 QpcToNs (Uint64 ticks) {
+
+			if (!qpcFreq) return 0;
+
+			return (Uint64) ((double) ticks * 1000000000.0 / (double) qpcFreq);
+
+		}
+
+
+		// Waits real vblank interrupts and publishes a predicted edge clock
 		void AnchorLoop () {
 
 			while (running) {
@@ -518,6 +591,7 @@ namespace lime {
 				}
 
 				FP_WaitForVerticalBlankEvent wait;
+
 				wait.hAdapter = hAdapter;
 				wait.hDevice = 0;
 				wait.VidPnSourceId = vidPnSourceId;
@@ -541,7 +615,7 @@ namespace lime {
 				failStreak = 0;
 
 				Uint64 now = SDL_GetTicksNS ();
-				vbLast = now;
+
 				vbAlive = now;
 
 				// Smooth the measured interval, rejecting outliers (VRR, wakeups)
@@ -569,6 +643,101 @@ namespace lime {
 				}
 
 				lastVbForPeriod = now;
+
+				Uint64 measured = realPeriod.load ();
+				Uint64 basePeriod = measured ? measured : periodNs;
+
+				// PLL on wake times: the absolute phase is late by the wake latency,
+				// the jitter is what the filter is for
+				if (basePeriod) {
+
+					Uint64 pred = predEdge.load ();
+
+					if (!pred) {
+
+						pred = now;
+
+					} else {
+
+						pred += basePeriod;
+
+						long long err = (long long) now - (long long) pred;
+
+						pred = (Uint64) ((long long) pred + err / 8);
+
+					}
+
+					predEdge = pred;
+
+				}
+
+				// hardware edge, no thread wake bias
+				bool hwOk = false;
+				Uint64 hwEdge = 0;
+				Uint64 hwPeriod = 0;
+
+				if (useDwm.load () && dwmTiming && qpcFreq) {
+
+					DWM_TIMING_INFO ti;
+
+					memset (&ti, 0, sizeof (ti));
+					ti.cbSize = (UINT) sizeof (ti);
+
+					if (dwmTiming (nullptr, &ti) == S_OK && ti.qpcVBlank) {
+
+						LARGE_INTEGER qpcNow;
+
+						QueryPerformanceCounter (&qpcNow);
+
+						long long delta = (long long) qpcNow.QuadPart - (long long) ti.qpcVBlank;
+
+						if (delta >= 0) {
+
+							Uint64 age = QpcToNs ((Uint64) delta);
+
+							if (age < 100000000ULL) {
+
+								hwOk = true;
+								hwEdge = now - age;
+								hwPeriod = ti.qpcRefreshPeriod ? QpcToNs ((Uint64) ti.qpcRefreshPeriod) : 0;
+
+							}
+
+						}
+
+					}
+
+				}
+
+				if (hwOk) {
+
+					hwFailStreak = 0;
+					anchorEdge = hwEdge;
+
+					if (hwPeriod && (!periodNs || (hwPeriod > periodNs / 2 && hwPeriod < periodNs * 2))) {
+
+						anchorPeriod = hwPeriod;
+
+					} else {
+
+						anchorPeriod = basePeriod;
+
+					}
+
+					anchorHw = true;
+
+				} else if (anchorHw.load () && ++hwFailStreak < 20 && now - anchorEdge.load () < 200000000ULL) {
+
+					// one stale DWM sample must not flip the phase back to the late wake clock
+
+				} else {
+
+					hwFailStreak = 0;
+					anchorEdge = predEdge.load ();
+					anchorPeriod = basePeriod;
+					anchorHw = false;
+
+				}
 
 				// persistent measured-vs-CCD mismatch = wrong display binding
 				Uint64 base = periodNs;
@@ -657,205 +826,78 @@ namespace lime {
 		}
 
 
+		// DWM's period is exact; the measured one is only used as a fallback
+		Uint64 PacingPeriod () {
+
+			Uint64 p = EffectivePeriod ();
+
+			if (anchorHw.load ()) {
+
+				Uint64 hp = anchorPeriod.load ();
+
+				if (hp && (!periodNs || (hp > periodNs * 9 / 10 && hp < periodNs * 11 / 10))) p = hp;
+
+			}
+
+			return p;
+
+		}
+
+
+		Uint64 EffectiveEps () {
+
+			if (epsEnv) return epsFixed;
+
+			return anchorHw.load () ? epsFixed : (epsFixed > PLL_EPS_NS ? epsFixed : PLL_EPS_NS);
+
+		}
+
+
+		// First edge strictly after t, computed from the anchor's last edge
+		Uint64 NextEdgeAfter (Uint64 t, Uint64 period, Uint64 base) {
+
+			if (!period || !base) return 0;
+
+			Uint64 e = base;
+
+			if (t > base) e = base + ((t - base) / period) * period;
+
+			if (e <= t) e += period;
+
+			return e;
+
+		}
+
+
 		// cadence state is per-display; must not survive a monitor switch
-		void ResetCadenceState () {
-
-			filteredBody = 0.0;
-			rEst = 0.0;
-			tearActive = false;
-			freeRun = false;
-			overloadLogged = false;
-			probeFrame = false;
-			probePasses = 0;
-			lastProbeNs = 0;
-			probeEdge = 0;
-			deepMissStreak = 0;
-			gridN = 1;
-			gridK = 1;
-			lastPresented = 0;
-			nextBoundary = 0;
-			lastGateStart = 0;
-			gridWindowStart = 0;
-			gridSamples = 0;
-			gridMisses = 0;
-			lastGridChangeNs = 0;
-			slowBurst = 0;
-
-			for (int i = 0; i < 5; i++) bodyRing[i] = 0;
-
-		}
-
-
-		// swappy-style divider: climb on misses, step down only after a clean window
-		void UpdateGridN (bool missed) {
-
-			// free-run owns the presentation policy: freeze the gear while it lasts
-			if (fullscreenMode && freeRun) return;
-
-			// a frame can be sampled twice (ShouldSwap + RecordMiss): count it once
-			if (lastGridSampleFrame == frameSerial) return;
-
-			lastGridSampleFrame = frameSerial;
-
-			Uint64 period = EffectivePeriod ();
-
-			if (!period) return;
-
-			Uint64 now = SDL_GetTicksNS ();
-
-			if (!gridWindowStart) gridWindowStart = now;
-
-			gridSamples++;
-
-			if (missed) gridMisses++;
-
-			// 2 s window or 64 frames, whichever first
-			if (now - gridWindowStart < 2000000000ULL && gridSamples < 64) return;
-
-			int pct = gridSamples ? gridMisses * 100 / gridSamples : 0;
-
-			int wantN = gridN;
-
-			// body can't fit the grid: smallest whole divider keeps intervals even
-			// if (pct > 10 && filteredBody > (double) period * gridN) {
-			//
-			// 	wantN = (int) std::ceil (filteredBody / (double) period);
-			//
-			// 	if (wantN > 8) wantN = 8;
-			//
-			// clean window that fits the next-lower grid: give the rate back
-			// } else
-			if (pct == 0 && gridN > 1
-				&& filteredBody < (double) period * (gridN - 1) - 500000.0) {
-
-				wantN = gridN - 1;
-
-			}
-
-			if (wantN != gridN && now - lastGridChangeNs > 100000000ULL) {
-
-				gridN = wantN;
-				lastGridChangeNs = now;
-
-				// phase re-anchors on the new grid, no catch-up
-				lastPresented = 0;
-				nextBoundary = 0;
-
-				char b[160];
-
-				snprintf (b, sizeof (b),
-					"[FramePacer] grid -> N=%d (miss=%d%% body=%.2f ms)\n",
-					gridN, pct, filteredBody / 1e6);
-				GateLogRaw (b);
-
-			}
-
-			// fresh window either way: old samples must not leak
-			gridWindowStart = now;
-			gridSamples = 0;
-			gridMisses = 0;
-
-		}
-
-
-		void RecordMiss (bool miss) {
-
-			missRing[missIndex] = miss ? 1 : 0;
-			missIndex = (missIndex + 1) & 31;
-
-			int missSum = 0;
-
-			for (int i = 0; i < 32; i++) missSum += missRing[i];
-
-			if (missSum >= 2 && eps < EPS_MAX) {
-
-				eps += 250000.0;
-
-			}
-
-			if (missSum == 0) {
-
-				if (++noMissRun > 240 && eps > EPS_MIN) {
-
-					eps -= 100000.0;
-					noMissRun = 0;
-
-				}
-
-			} else {
-
-				noMissRun = 0;
-
-			}
-
-			// the miss verdict doubles as the gear sample (deduped per frame)
-			UpdateGridN (miss);
-
-		}
-
-
-		// two passes re-arm the edge grid; probes are the only exit from free-run
-		// (a body-threshold exit would flip-flop the mode every frame)
-		void FinishProbe (bool caught, Uint64 missBy) {
-
-			if (!probeFrame) return;
-
-			probeFrame = false;
-
-			Uint64 period = EffectivePeriod ();
-
-			// over-budget body never re-arms: the hair-miss exemption would flip-flop sync/free-run
-			if (!caught && period
-				&& (missBy > period / 10 || filteredBody > (double) period * gridN)) {
-
-				probePasses = 0;
-
-				return;
-
-			}
-
-			probePasses++;
-
-			if (probePasses >= 2) {
-
-				tearActive = false;
-				probePasses = 0;
-
-				// re-anchor the grid: a stale lastPresented would deep-miss and relapse into free-run
-				lastPresented = 0;
-
-				// the stale streak must not re-release on the next miss
-				deepMissStreak = 0;
-
-				// the gear window is stale from the free-run episode -- fresh sample
-				gridWindowStart = SDL_GetTicksNS ();
-				gridSamples = 0;
-				gridMisses = 0;
-
-				char pBuf[160];
-
-				snprintf (pBuf, sizeof (pBuf),
-					"[FramePacer] probe re-entry: body %.2f ms fits the edge budget again -- resuming scanline sync\n",
-					filteredBody / 1e6);
-				GateLogRaw (pBuf);
-
-			}
-
-		}
-
-
-		// First boundary after `horizon`, computed in closed form
-		Uint64 NextBoundaryAfter (Uint64 horizon, Uint64 period) {
-
-			Uint64 vb = vbLast.load ();
-
-			if (!vb) return 0;
-
-			if (vb > horizon) return vb;
-
-			Uint64 steps = (horizon - vb) / period + 1;
-
-			return vb + steps * period;
+		void ResetPacing () {
+
+			gateActive = false;
+			framePeriod = 0;
+			frameEps = 0;
+			targetEdge = 0;
+			nextTarget = 0;
+			gridStep = 1;
+			frameStartT0 = 0;
+			readyAt = 0;
+			presentAt = 0;
+			lastPresentAt = 0;
+			presentErr = 0;
+			bodyEst = 3000000.0;
+			bodyIndex = 0;
+			bodyCount = 0;
+			frameBase = 0;
+			pacedLogged = false;
+
+			swapCount = 0;
+			tearCount = 0;
+			lateCount = 0;
+			errSum = 0;
+			errMin = 0;
+			errMax = 0;
+			ivIndex = 0;
+			ivCount = 0;
+			statWindow = 0;
 
 		}
 
@@ -891,6 +933,7 @@ namespace lime {
 
 		}
 
+
 		void LogState (const char* event) {
 
 			char buf[160];
@@ -899,371 +942,272 @@ namespace lime {
 			Uint64 alive = vbAlive.load ();
 			bool fresh = alive && now - alive <= ANCHOR_STALE_NS;
 
-			snprintf (buf, sizeof (buf),
-				"[FramePacer] %s | gate=%d anchor=%s period=%.3f ms scanline=%s\n",
-				event,
-				gateActive ? 1 : 0,
-				fresh ? "live" : "stale",
-				EffectivePeriod () / 1e6,
-				!scanlineDisabled ? "on" : "off");
+			snprintf (buf, sizeof (buf), "[FramePacer] %s | anchor=%s P=%.3f ms\n",
+				event, fresh ? "live" : "stale", EffectivePeriod () / 1e6);
 
 			GateLogRaw (buf);
 
 		}
 
 
-		// log on state change or every 10 s; swaps delta = true presentation rate
+		void LogPaced () {
+
+			if (pacedLogged) return;
+
+			pacedLogged = true;
+
+			char buf[224];
+
+			snprintf (buf, sizeof (buf),
+				"[FramePacer] paced: anchor=%s P=%.3f ms eps=%.3f ms margin=%.3f ms step=%d\n",
+				anchorHw.load () ? "hw" : "pll",
+				framePeriod / 1e6,
+				frameEps / 1e6,
+				gpuMargin / 1e6,
+				gridStep);
+
+			GateLogRaw (buf);
+
+		}
+
+
+		// log on state change or every 10 s; intervals, not swap counts, are the evidence
 		void LogStateHeartbeat () {
 
 			Uint64 now = SDL_GetTicksNS ();
 
-			Uint64 alive = vbAlive.load ();
-			bool fresh = alive && now - alive <= ANCHOR_STALE_NS;
+			if (!statWindow) {
 
-			Uint64 state = (gateActive ? 1ULL : 0ULL)
-				| (fresh ? 2ULL : 0ULL)
-				| (!scanlineDisabled ? 4ULL : 0ULL)
-				| (fullscreenMode ? 8ULL : 0ULL);
-
-			if (state == lastGateHash && now - lastGateLogTime < 10000000000ULL) return;
-
-			if (state != lastGateHash && lastGateLogTime && now - lastGateLogTime < 1000000000ULL) return;
-
-			lastGateHash = state;
-			lastGateLogTime = now;
-
-			char buf[192];
-
-			snprintf (buf, sizeof (buf),
-				"[FramePacer] state | gate=%d fs=%d gridN=%d anchor=%s period=%.3f ms scanline=%s swaps=%u poll=%u/%u body=%.2f ms\n",
-				gateActive ? 1 : 0,
-				fullscreenMode ? 1 : 0,
-				gridN,
-				fresh ? "live" : "stale",
-				EffectivePeriod () / 1e6,
-				!scanlineDisabled ? "on" : "off",
-				swapCount, gateHits, gateMisses,
-				filteredBody / 1e6);
-
-			swapCount = 0;
-			gateHits = 0;
-			gateMisses = 0;
-			GateLogRaw (buf);
-
-		}
-
-
-		// fullscreen scanline gate: present exactly on the edge (tear in the
-		// blanking zone); false on failure/timeout, caller presents free
-		bool WaitVBlankEdge (Uint64 nb, Uint64 period) {
-
-			Uint64 t0 = SDL_GetTicksNS ();
-
-			bool result = WaitVBlankEdgeInner (nb, period);
-
-			// feeding the wait back into rEst would inflate the lead that schedules it
-			swapWaitNs += SDL_GetTicksNS () - t0;
-
-			if (result) gateHits++; else gateMisses++;
-
-			return result;
-
-		}
-
-		bool WaitVBlankEdgeInner (Uint64 nb, Uint64 period) {
-
-			if (scanlineDisabled) return false;
-
-			// wait for the anchor to publish the NEXT edge (vbLast jump); not
-			// GetScanLine -- it disagrees with the vblank event on multi-screen setups
-
-			// far from the edge: short capped sleeps
-			while (true) {
-
-				Uint64 now = SDL_GetTicksNS ();
-				Uint64 alive = vbAlive.load ();
-
-				if (!alive || now - alive > ANCHOR_STALE_NS) return false;
-
-				long long pre = (long long) nb - (long long) now;
-
-				if (pre <= (long long) GATE_SLEEP_EDGE_NS) break;
-
-				SDL_DelayNS (pre > 1000000LL ? 1000000ULL : (Uint64) pre);
+				statWindow = now;
+				return;
 
 			}
 
-			// baseline at poll-window entry: with gridN > 1 the sleep loop above
-			// crosses skipped edges, a stale baseline fires a period early
-			Uint64 v0 = vbLast.load ();
+			if (now - statWindow < STAT_WINDOW_NS) return;
 
-			Uint64 giveUp = SDL_GetTicksNS () + GATE_SLEEP_EDGE_NS + 2000000ULL;
+			double secs = (double) (now - statWindow) / 1e9;
+			double fps = secs > 0.0 ? (double) swapCount / secs : 0.0;
+			double avgErr = swapCount ? (double) errSum / (double) swapCount / 1e6 : 0.0;
 
-			while (SDL_GetTicksNS () < giveUp) {
+			double tgt = lastTarget ? 1e9 / (double) lastTarget : 0.0;
 
-				if (vbLast.load () != v0) {
+			Uint32 p50 = 0, p99 = 0, ivMax = 0;
 
-					if (!gateFirstHit) {
+			if (ivCount) {
 
-						gateFirstHit = true;
-						LogState ("scanline edge hit");
+				Uint32 tmp[256];
+
+				for (Uint32 i = 0; i < ivCount; i++) tmp[i] = ivRing[i];
+
+				for (Uint32 i = 1; i < ivCount; i++) {
+
+					Uint32 v = tmp[i];
+					Uint32 j = i;
+
+					while (j > 0 && tmp[j - 1] > v) {
+
+						tmp[j] = tmp[j - 1];
+						j--;
 
 					}
 
-					return true;
+					tmp[j] = v;
 
 				}
 
+				p50 = tmp[ivCount / 2];
+				p99 = tmp[(Uint32) ((double) (ivCount - 1) * 0.99)];
+				ivMax = tmp[ivCount - 1];
+
 			}
 
-			return false;
+			char buf[384];
+
+			snprintf (buf, sizeof (buf),
+				"[FramePacer] state | fs=%d tgt=%.0f step=%d anchor=%s P=%.3f eps=%.3f body=%.2f margin=%.2f | fps=%.1f swaps=%u tear=%u late=%u err avg=%.2f min=%.2f max=%.2f | iv50=%.2f iv99=%.2f ivmax=%.2f\n",
+				fullscreenMode ? 1 : 0,
+				tgt,
+				gridStep,
+				anchorHw.load () ? "hw" : "pll",
+				framePeriod / 1e6,
+				frameEps / 1e6,
+				bodyEst / 1e6,
+				gpuMargin / 1e6,
+				fps,
+				swapCount,
+				tearCount,
+				lateCount,
+				avgErr,
+				errMin / 1e6,
+				errMax / 1e6,
+				p50 / 1e6,
+				p99 / 1e6,
+				ivMax / 1e6);
+
+			GateLogRaw (buf);
+
+			swapCount = 0;
+			tearCount = 0;
+			lateCount = 0;
+			errSum = 0;
+			errMin = 0;
+			errMax = 0;
+			ivIndex = 0;
+			ivCount = 0;
+			statWindow = now;
 
 		}
 
 
 		bool WaitFrameStart (Uint64 target) {
 
+			lastTarget = target;
+
+			bool fs = sdlWindow && (SDL_GetWindowFlags (sdlWindow) & SDL_WINDOW_FULLSCREEN) != 0;
+
+			if (fs != prevFullscreenMode) {
+
+				prevFullscreenMode = fs;
+				ResetPacing ();
+
+			}
+
+			fullscreenMode = fs;
+
 			LogStateHeartbeat ();
-
-			// one serial per frame: the gear window counts a frame exactly once
-			frameSerial++;
-
-			// submission strategy follows the present path (edge gate vs DWM deadlines)
-			fullscreenMode = sdlWindow && (SDL_GetWindowFlags (sdlWindow) & SDL_WINDOW_FULLSCREEN) != 0;
-
-			// present-path switch: reset the other path's grid state
-			if (fullscreenMode != prevFullscreenMode) {
-
-				prevFullscreenMode = fullscreenMode;
-				lastPresented = 0;
-				tearActive = false;
-				gridN = 1;
-				gridMisses = 0;
-				gridSamples = 0;
-				gridWindowStart = 0;
-
-			}
-
-			// display checks run even when pacing is off (3 s poll, first bind retries every frame)
-			if (!lastMonitor || rebindHint.load () || SDL_GetTicksNS () - lastCheckNs >= 3000000000ULL) {
-
-				lastCheckNs = SDL_GetTicksNS ();
-				CheckDisplay ();
-
-			}
-
-			if (!sdlWindow || !openAdapter || !waitVBlank) return false;
 
 			Uint64 now = SDL_GetTicksNS ();
 
-			Uint64 alive = vbAlive.load ();
-
-			if (!alive || now - alive > ANCHOR_STALE_NS) {
-
-				gateActive = false;
-				return false;
-
-			}
-
-			Uint64 period = EffectivePeriod ();
-
-			if (!period) {
-
-				gateActive = false;
-				return false;
-
-			}
-
-			// Never pace on top of vsync
-			int swapInterval = 0;
-
-			if (SDL_GL_GetSwapInterval (&swapInterval)) {
-
-				if (swapInterval != 0) {
-
-					gateActive = false;
-					return false;
-
-				}
-
-			}
-
-			// windowed cap neither unlimited nor near the refresh rate: no alignment,
-			// SDLApplication's time-based limiter takes over (paced = false)
-			if (!fullscreenMode && target != 0
-				&& (target < period - period / 32 || target > period + period / 32)) {
-
-				gateActive = false;
-				return false;
-
-			}
-
-			if (fullscreenMode || target == 0) {
-
-				// gated mode: render at its own pace, submissions gated in ShouldSwap
-				gateActive = true;
-
-				// fullscreen: lock the frame head to the hardware edge clock (unlimited
-				// / cap-at-refresh only). over-budget bodies release into free-run;
-				// LIME_NO_FULLSCREEN_TEAR pins the grid on. tearActive is set by
-				// ShouldSwap on a deep miss, cleared only by probe re-entry
-
-				// one shared verdict for all consumers
-				freeRun = fullscreenTear && tearActive;
-
-				// probe every 250 ms while free-running; consecutive passes re-arm back-to-back
-				if (freeRun && !probeFrame
-					&& (probePasses > 0 || now - lastProbeNs >= 250000000ULL)) {
-
-					probeFrame = true;
-					lastProbeNs = now;
-
-				}
-
-				if (!freeRun) overloadLogged = false;
-
-				// alignment is fullscreen-only; windowed only free-runs in this branch
-				bool edgeAligned = fullscreenMode && filteredBody > 0.0
-					&& (target == 0 || target <= period + period / 32)
-					&& (!freeRun || probeFrame);
-
-				if (target != 0 && lastGateStart && !edgeAligned) {
-
-					Uint64 gateDeadline = lastGateStart + target;
-
-					if (gateDeadline > now) {
-
-						if (gateDeadline > now + SPIN_MARGIN_NS) {
-
-							SDL_DelayNS (gateDeadline - now - SPIN_MARGIN_NS);
-
-						}
-
-						while (SDL_GetTicksNS () < gateDeadline) {
-
-
-
-						}
-
-						now = SDL_GetTicksNS ();
-
-					}
-
-				}
-
-				// align the render start so the body ends just before the edge
-				if (edgeAligned) {
-
-					Uint64 gridPeriod = period * gridN;
-
-					// lead = whole body (commands + drained GPU) + anchor publication
-					// delay; the clamp scales with the grid so an N-period body fits
-					// fullscreen keeps the fixed margin (the fence drain covers the rest);
-					// windowed deadlines sit at DWM composite points with an a-priori
-					// unknowable vblank phase -- the adaptive eps covers that offset
-					double lead = filteredBody + (fullscreenMode ? (double) EDGE_MARGIN_NS : eps);
-
-					if (lead > (double) gridPeriod * 0.94) lead = (double) gridPeriod * 0.94;
-
-					// probe measures the worst case: grant the full clamped lead
-					if (probeFrame) lead = (double) gridPeriod * 0.94;
-
-					if (lead < (double) period * 0.1) lead = (double) period * 0.1;
-
-					long long startAt = (long long) NextBoundaryAfter (now, gridPeriod) - (long long) lead;
-
-					// probe must reach a verdict: slip to the next edge when this one is inside the lead
-					if (probeFrame && startAt <= (long long) now) startAt += (long long) gridPeriod;
-
-					if (startAt > (long long) now && startAt - (long long) now < (long long) (gridPeriod * 2)) {
-
-						Uint64 deadline = (Uint64) startAt;
-
-						if (deadline > now + SPIN_MARGIN_NS) {
-
-							SDL_DelayNS (deadline - now - SPIN_MARGIN_NS);
-
-						}
-
-						while (SDL_GetTicksNS () < deadline) {
-
-
-
-						}
-
-						now = SDL_GetTicksNS ();
-
-						// probe verdict measures against the edge this frame aligned to
-						if (probeFrame) probeEdge = (Uint64) startAt + (Uint64) lead;
-
-					} else if (startAt <= (long long) now) {
-
-						// late frame: re-anchor, render now, align next head (DXVK semantics)
-						lastPresented = 0;
-
-						// a probe with failed alignment has no verdict -- drop it
-						if (probeFrame) {
-
-							probeFrame = false;
-							probePasses = 0;
-							probeEdge = 0;
-
-						}
-
-					}
-
-				}
-
-				lastGateStart = now;
-				frameStartT0 = now;
-				return true;
+			// display checks run even when pacing is off (3 s poll, first bind retries every frame)
+			if (!lastMonitor || rebindHint.load () || now - lastCheckNs >= 3000000000ULL) {
+
+				lastCheckNs = now;
+				CheckDisplay ();
 
 			}
 
 			gateActive = false;
 
-			if (nextBoundary == 0) {
+			if (!sdlWindow || !openAdapter || !waitVBlank || pacerOff) return false;
 
-				frameStartT0 = now;
-				return true;
+			Uint64 alive = vbAlive.load ();
+
+			if (!alive || now - alive > ANCHOR_STALE_NS) return false;
+
+			// windowed: DWM decides when the frame is latched, the time-based cap owns the rate
+			if (!fullscreenMode) return false;
+
+			// Never pace on top of vsync
+			int swapInterval = 0;
+
+			if (SDL_GL_GetSwapInterval (&swapInterval) && swapInterval != 0) return false;
+
+			Uint64 period = PacingPeriod ();
+
+			if (!period) return false;
+
+			Uint64 base = anchorEdge.load ();
+
+			if (!base) return false;
+
+			// cap below the refresh rate: present every whole number of refreshes
+			int step = 1;
+
+			if (target != 0) {
+
+				double ratio = (double) target / (double) period;
+
+				step = (int) std::llround (ratio);
+
+				if (step < 1) step = 1;
+				if (step > 8) step = 8;
 
 			}
 
-			double r = rEst;
+			bool hw = anchorHw.load ();
 
-			if (r < period * 0.05) r = period * 0.05;
-			if (r > period * 0.75) r = period * 0.75;
+			if (hw != prevAnchorHw) {
 
-			long long submitStart = (long long) nextBoundary - (long long) eps - (long long) r;
+				prevAnchorHw = hw;
+				nextTarget = 0;
 
-			if (submitStart > (long long) now) {
+			}
 
-				Uint64 deadline = (Uint64) submitStart;
+			// D3DKMT wakes after the edge; shift the predicted clock by the mean wake
+			if (!hw && base > pllBias) base -= pllBias;
 
-				// Never wait more than one period (bad anchor data would stall here)
-				if (deadline > now + period) {
+			gridStep = step;
+			framePeriod = period;
+			frameBase = base;
 
-					nextBoundary = 0;
-					frameStartT0 = now;
-					return true;
+			Uint64 grid = period * (Uint64) step;
+			Uint64 edge;
+
+			if (!nextTarget || nextTarget <= now) {
+
+				edge = NextEdgeAfter (now, grid, base);
+
+			} else {
+
+				edge = nextTarget;
+
+			}
+
+			if (!edge) return false;
+
+			targetEdge = edge;
+
+			Uint64 eps = EffectiveEps ();
+
+			if (!epsEnv) {
+
+				// body over one grid: the extra lead is the overlap the next frame
+				// needs to start before this frame's GPU tail finishes
+				double over = bodyEst + 100000.0 - (double) grid;
+
+				if (over > 0.0) {
+
+					Uint64 autoEps = (Uint64) over;
+
+					if (autoEps > eps) eps = autoEps;
 
 				}
 
-				if (deadline > now + SPIN_MARGIN_NS) {
+				if (eps > 3000000ULL) eps = 3000000ULL;
 
-					SDL_DelayNS (deadline - now - SPIN_MARGIN_NS);
+			}
 
-				}
+			frameEps = eps;
 
-				while (SDL_GetTicksNS () < deadline) {
+			Uint64 lead = (Uint64) bodyEst + eps;
 
+			if (lead < 300000ULL) lead = 300000ULL;
+			if (lead > grid + eps) lead = grid + eps;
 
+			// start early enough for the body to end eps before the edge; never
+			// start before the previous present, that would be two frames in flight
+			Uint64 start = (edge > lead) ? edge - lead : 0;
+
+			if (start < lastPresentAt) start = lastPresentAt;
+			if (start < now) start = now;
+
+			if (start > now) {
+
+				Uint64 wait = start - now;
+
+				if (wait > SPIN_NS) SDL_DelayNS (wait - SPIN_NS);
+
+				while (SDL_GetTicksNS () < start) {
 
 				}
 
 			}
 
 			frameStartT0 = SDL_GetTicksNS ();
+			gateActive = true;
+
+			LogPaced ();
+
 			return true;
 
 		}
@@ -1271,294 +1215,142 @@ namespace lime {
 
 		bool ShouldSwap (Uint64 now) {
 
-			// Never gate on top of vsync; the driver already blocks on the edge
-			int swapInterval = 0;
+			if (!gateActive) return true;
 
-			if (SDL_GL_GetSwapInterval (&swapInterval) && swapInterval != 0) return true;
+			// present just before the edge: an on-time flip tears at the bottom
+			// (or not at all), a post-edge flip costs the whole frame
+			Uint64 deadline = (targetEdge > frameEps) ? targetEdge - frameEps : targetEdge;
 
-			Uint64 period = EffectivePeriod ();
+			readyAt = SDL_GetTicksNS ();
 
-			if (!period) return true;
+			if (readyAt < deadline) {
 
-			Uint64 nb = NextBoundaryAfter (now, period);
+				Uint64 wait = deadline - readyAt;
 
-			if (!nb) return true;
+				if (wait > SPIN_NS) SDL_DelayNS (wait - SPIN_NS);
 
-			if (fullscreenMode) {
-
-				// free-run: every frame submits at body rate; probes skip this so
-				// their verdict can re-arm the grid (lastPresented stays frozen)
-				if (freeRun && !probeFrame) {
-
-					swapCount++;
-					return true;
+				while (SDL_GetTicksNS () < deadline) {
 
 				}
-
-				// probe verdict against probeEdge (lastPresented froze with free-run)
-				if (probeFrame) {
-
-					if (probeEdge) {
-
-						bool probeCaught = now < probeEdge;
-
-						FinishProbe (probeCaught, probeCaught ? (Uint64) 0 : now - probeEdge);
-
-					} else {
-
-						// aligned edge lost (should not happen): fail conservatively
-						FinishProbe (false, 1ULL << 40);
-
-					}
-
-				}
-
-				// whole-divider edge grid: one presentation per grid point, even intervals
-				Uint64 gridPeriod = period * gridN;
-
-				Uint64 target;
-
-				// every edge-grid exit routes through FinishProbe
-				bool probeCaught = true;
-
-				Uint64 probeMissBy = 0;
-
-				if (!lastPresented) {
-
-					// re-anchor on the first reachable boundary
-					target = NextBoundaryAfter (now, gridPeriod);
-
-					RecordMiss (false);
-
-				} else {
-
-					target = lastPresented + gridPeriod;
-
-					if (target <= now) {
-
-						RecordMiss (true);
-
-						probeCaught = false;
-						probeMissBy = now - target;
-
-						// every miss presents immediately: hair-miss flips in the blanking
-						// zone, deep miss tears but keeps the rate (waiting halved the cadence)
-						FinishProbe (probeCaught, probeMissBy);
-
-						lastPresented = target;
-						swapCount++;
-
-						// a run of deep misses releases into free-run; isolated misses stay
-						if (probeMissBy > period / 10) {
-
-							deepMissStreak++;
-
-							if (deepMissStreak >= 4 && !tearActive) {
-
-								tearActive = true;
-
-								if (fullscreenTear && !overloadLogged) {
-
-									overloadLogged = true;
-
-									char oBuf[192];
-
-									snprintf (oBuf, sizeof (oBuf),
-										"[FramePacer] fullscreen overload: body misses the edge by %.2f ms -- free-running at the body rate (no scanline sync, LIME_NO_FULLSCREEN_TEAR reverts to the edge grid)\n",
-										probeMissBy / 1e6);
-									GateLogRaw (oBuf);
-
-								}
-
-							}
-
-						} else {
-
-							deepMissStreak = 0;
-
-						}
-
-						return true;
-
-					} else {
-
-						// Normal frames count too: the gear window needs them
-						RecordMiss (false);
-
-						deepMissStreak = 0;
-
-					}
-
-				}
-
-				FinishProbe (probeCaught, probeMissBy);
-
-				lastPresented = target;
-
-				// missed edge: catch the NEXT edge, never present at a free-running phase
-				if (!WaitVBlankEdge (target, period)) {
-
-					WaitVBlankEdge (NextBoundaryAfter (SDL_GetTicksNS () + period / 2, period), period);
-
-				}
-
-				swapCount++;
-				return true;
 
 			}
 
-			// windowed: DWM latches the newest frame at each composite point, so EVERY
-			// rendered frame submits (flips coalesce). the old submission gate starved
-			// the channel into a frozen picture
-			gridK = gridN;
+			presentAt = SDL_GetTicksNS ();
+			presentErr = (long long) presentAt - (long long) targetEdge;
 
-			Uint64 step = period * gridK;
+			if (presentErr > 0) tearCount++;
+			else if (readyAt > deadline) lateCount++;
 
-			// grid account feeds the gear window; reset on a mode change
-			Uint64 target;
+			if (lastPresentAt) {
 
-			bool overshot = false;
+				Uint64 iv = presentAt - lastPresentAt;
 
-			if (!lastPresented) {
+				if (iv > 0 && iv < 1000000000ULL) {
 
-				target = nb + step - period;
+					ivRing[ivIndex] = (Uint32) iv;
+					ivIndex = (ivIndex + 1) & 255;
+
+					if (ivCount < 256) ivCount++;
+
+				}
+
+			}
+
+			lastPresentAt = presentAt;
+
+			errSum += presentErr;
+
+			if (swapCount == 0) {
+
+				errMin = presentErr;
+				errMax = presentErr;
 
 			} else {
 
-				target = lastPresented + step;
-
-				if (target <= now) {
-
-					// grid points passed without a submission: re-target forward in
-					// whole steps; this is the evidence UpdateGridN climbs the divider with
-					target = lastPresented + step * ((now - lastPresented) / step + 1);
-					overshot = true;
-
-				} else if (lastPresented > now) {
-
-					// account ahead of the clock hides overshoots and locks the gear
-					// out -- re-anchor on the real boundary grid
-					target = nb + step - period;
-
-				}
+				if (presentErr < errMin) errMin = presentErr;
+				if (presentErr > errMax) errMax = presentErr;
 
 			}
 
-			lastPresented = target;
-
-			// gear sample only; eps stays fed by OnFrameEnd's late-body verdict
-			UpdateGridN (overshot);
 			swapCount++;
+
 			return true;
 
 		}
 
 
-		// fullscreen gated modes always drain (undrained swap backpressure bursts the body); free-run is GPU-bound anyway; windowed undrained (DWM latches on its own)
-		bool ShouldDrainGpu () {
 
-			return fullscreenMode;
+		double BodyPercentile (double p) {
+
+			if (!bodyCount) return 0.0;
+
+			Uint64 tmp[64];
+
+			for (int i = 0; i < bodyCount; i++) tmp[i] = bodyRing[i];
+
+			for (int i = 1; i < bodyCount; i++) {
+
+				Uint64 v = tmp[i];
+				int j = i - 1;
+
+				while (j >= 0 && tmp[j] > v) {
+
+					tmp[j + 1] = tmp[j];
+					j--;
+
+				}
+
+				tmp[j + 1] = v;
+
+			}
+
+			int idx = (int) (p * (double) (bodyCount - 1) + 0.5);
+
+			if (idx < 0) idx = 0;
+			if (idx >= bodyCount) idx = bodyCount - 1;
+
+			return (double) tmp[idx];
 
 		}
 
 
 		void OnFrameEnd (Uint64 frameEnd) {
 
-			Uint64 period = EffectivePeriod ();
+			if (!gateActive || !readyAt || readyAt < frameStartT0) return;
 
-			if (!period) {
+			Uint64 cpu = readyAt - frameStartT0;
 
-				nextBoundary = 0;
-				return;
+			bodyRing[bodyIndex] = cpu;
+			bodyIndex = (bodyIndex + 1) & 63;
+
+			if (bodyCount < 64) bodyCount++;
+
+			bodyEst = BodyPercentile (0.90) + (double) gpuMargin;
+
+			if (framePeriod) {
+
+				double cap = (double) framePeriod * (double) gridStep + 3000000.0;
+
+				if (bodyEst > cap) bodyEst = cap;
 
 			}
 
-			Uint64 rInst = frameEnd - frameStartT0;
+			if (bodyEst < 300000.0) bodyEst = 300000.0;
 
-			// rEst must estimate the render body only -- counting the wait back in runs away
-			if (rInst > swapWaitNs) rInst -= swapWaitNs; else rInst = 0;
+			// one present per grid point: the next target is the one after this
+			// edge, and a late frame re-anchors on the edge after the present
+			Uint64 grid = framePeriod * (Uint64) gridStep;
 
-			Uint64 waitUsed = swapWaitNs;
-			swapWaitNs = 0;
+			if (grid) {
 
-			// log raw slow-frame evidence; body vs wait tells stalls from pacing holds
-			if (rInst > period + period / 3) {
-
-				slowBurst++;
-
-				// burst raw, then throttle -- periodic GC stalls would flood the log
-				if (slowBurst <= 4 || frameEnd - lastSlowLogNs > 2000000000ULL) {
-
-					lastSlowLogNs = frameEnd;
-
-					char sBuf[192];
-
-					snprintf (sBuf, sizeof (sBuf),
-						"[FramePacer] slow frame: body=%.2f ms wait=%.2f ms fs=%d gate=%d rEst=%.2f ms\n",
-						rInst / 1e6, waitUsed / 1e6,
-						fullscreenMode ? 1 : 0, gateActive ? 1 : 0, rEst / 1e6);
-					GateLogRaw (sBuf);
-
-				}
+				if (presentErr <= 0) nextTarget = targetEdge + grid;
+				else nextTarget = NextEdgeAfter (presentAt, grid, frameBase);
 
 			} else {
 
-				slowBurst = 0;
+				nextTarget = 0;
 
 			}
-
-			// keep only a clock-fault guard; the median filter absorbs spikes on its own
-			if (rInst > 1000000000ULL) rInst = 1000000000ULL;
-
-			bodyRing[bodyIndex] = rInst;
-			bodyIndex = (bodyIndex + 1) % 5;
-
-			// median of the 5-slot ring absorbs spikes
-			Uint64 sorted[5];
-
-			for (int i = 0; i < 5; i++) sorted[i] = bodyRing[i];
-
-			for (int i = 1; i < 5; i++) {
-
-				Uint64 v = sorted[i];
-
-				int j = i - 1;
-
-				while (j >= 0 && sorted[j] > v) {
-
-					sorted[j + 1] = sorted[j];
-					j--;
-
-				}
-
-				sorted[j + 1] = v;
-
-			}
-
-			// ring starts zeroed: fall back to the raw body until the median is real
-			filteredBody = sorted[2] > 0 ? (double) sorted[2] : (double) rInst;
-
-			if (rEst == 0.0) {
-
-				rEst = filteredBody;
-
-			} else {
-
-				// EMA over the median: a spike can no longer inflate it
-				rEst = rEst * 7.0 / 8.0 + filteredBody / 8.0;
-
-			}
-
-			if (!fullscreenMode) {
-
-				// windowed tunes eps from late frames; fullscreen pins the edge
-				RecordMiss (nextBoundary != 0 && frameEnd > nextBoundary);
-
-			}
-
-			Uint64 lead = (Uint64) eps + (Uint64) rEst + 1000000ULL;
-
-			nextBoundary = NextBoundaryAfter (frameEnd + lead, period);
 
 		}
 
@@ -1636,14 +1428,6 @@ namespace lime {
 	}
 
 
-	bool FramePacer::ShouldDrainGpu () {
-
-		if (!impl) return false;
-
-		return ((FramePacerImpl*) impl)->ShouldDrainGpu ();
-
-	}
-
 
 	void FramePacer::OnFrameEnd (Uint64 frameEnd) {
 
@@ -1693,12 +1477,6 @@ namespace lime {
 
 	}
 
-
-	bool FramePacer::ShouldDrainGpu () {
-
-		return false;
-
-	}
 
 
 	void FramePacer::OnFrameEnd (Uint64 frameEnd) {

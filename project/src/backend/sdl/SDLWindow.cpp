@@ -362,19 +362,13 @@ namespace lime {
 			}
 			#endif
 
-			// pacing: undrained swaps block unpredictably once the flip queue fills
 			FramePacer* framePacer = SDLApplication::GetFramePacer ();
 
-			if (framePacer && framePacer->ShouldDrainGpu ()) {
+			// submit this frame before the pacer waits for the present deadline,
+			// so the GPU works during the wait instead of after the swap
+			if (framePacer) {
 
-				GLsync fence = glFenceSync (GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-
-				if (fence) {
-
-					glClientWaitSync (fence, GL_SYNC_FLUSH_COMMANDS_BIT, 100000000ULL);
-					glDeleteSync (fence);
-
-				}
+				glFlush ();
 
 			}
 
