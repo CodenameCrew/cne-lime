@@ -60,12 +60,12 @@ namespace lime {
 	// present lead before the predicted edge; lower = tear line closer to the bottom
 	static const Uint64 DEFAULT_EPS_NS = 400000ULL;
 	// D3DKMT wakes after the edge; PLL_EPS carries the wake latency, the bias shifts the phase
-	static const Uint64 PLL_EPS_NS = 600000ULL;
+	static const Uint64 PLL_EPS_NS = 100ULL;
 	static const Uint64 PLL_BIAS_NS = 200000ULL;
 	// windowed: DWM latches before the vblank, so hit the frame well before the edge
 	static const Uint64 WINDOWED_EPS_NS = 1500000ULL;
 	// GPU budget on top of the CPU body; lower = line closer to the bottom, higher = more headroom
-	static const Uint64 DEFAULT_GPU_MARGIN_NS = 1000000ULL;
+	static const Uint64 DEFAULT_GPU_MARGIN_NS = 10000ULL;
 	static const Uint64 STAT_WINDOW_NS = 10000000000ULL;
 
 
@@ -1570,8 +1570,9 @@ namespace lime {
 
 			frameEps = eps;
 
-			// windowed: the swap is a blocking DWM copy; its cost is part of the lead
-			Uint64 swapPad = fullscreenMode ? 0 : swapLead;
+			// the swap itself is a submit latency the body estimate cannot see:
+			// it blocks when the flip queue is full, so carry it in the lead too
+			Uint64 swapPad = swapLead;
 			Uint64 lead = (Uint64) bodyEst + eps + swapPad;
 
 			if (lead < 300000ULL) lead = 300000ULL;
@@ -1634,7 +1635,8 @@ namespace lime {
 		// without paying for the rare multi-ms spike every frame
 		void UpdateSwapLead (Uint64 swap) {
 
-			if (swap < 20000ULL || swap > 4000000ULL) return;
+			// a non-blocking swap reads 0; it still has to age the ring out
+			if (swap > 4000000ULL) return;
 
 			swapRing[swapIndex] = swap;
 			swapIndex = (swapIndex + 1) & 31;
@@ -1710,9 +1712,9 @@ namespace lime {
 
 			EndGpuQuery ();
 
-			// windowed SwapBuffers blocks on the DWM copy after this returns; the
-			// deadline is where the swap has to start, not where the frame ends
-			Uint64 back = frameEps + (fullscreenMode ? 0 : swapLead);
+			// the swap has to start early enough that the blocking submit lands
+			// eps before the edge
+			Uint64 back = frameEps + swapLead;
 			Uint64 deadline = (targetEdge > back) ? targetEdge - back : 0;
 
 			readyAt = SDL_GetTicksNS ();
@@ -1767,7 +1769,7 @@ namespace lime {
 
 			swapEndAt = now;
 
-			if (!fullscreenMode) UpdateSwapLead (now - swapStartAt);
+			UpdateSwapLead (now - swapStartAt);
 
 		}
 
@@ -1841,7 +1843,7 @@ namespace lime {
 
 				present = frameEnd;
 
-				if (!fullscreenMode) UpdateSwapLead (frameEnd - swapStartAt);
+				UpdateSwapLead (frameEnd - swapStartAt);
 
 			}
 
