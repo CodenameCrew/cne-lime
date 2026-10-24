@@ -65,7 +65,7 @@ namespace lime {
 	// windowed: DWM latches before the vblank, so hit the frame well before the edge
 	static const Uint64 WINDOWED_EPS_NS = 1500000ULL;
 	// GPU budget on top of the CPU body; lower = line closer to the bottom, higher = more headroom
-	static const Uint64 DEFAULT_GPU_MARGIN_NS = 10000ULL;
+	static const Uint64 DEFAULT_GPU_MARGIN_NS = 1000000ULL;
 	static const Uint64 STAT_WINDOW_NS = 10000000000ULL;
 
 
