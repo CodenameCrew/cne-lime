@@ -46,9 +46,19 @@ namespace lime {
 
 	} FP_WaitForVerticalBlankEvent;
 
+	typedef struct {
+
+		D3DKMT_HANDLE hAdapter;
+		UINT VidPnSourceId;
+		BOOL InVerticalBlank;
+		UINT ScanLine;
+
+	} FP_GetScanLine;
+
 	typedef NTSTATUS (APIENTRY *FP_OpenAdapterFromLuidFunc) (FP_OpenAdapterFromLuid*);
 	typedef NTSTATUS (APIENTRY *FP_CloseAdapterFunc) (FP_CloseAdapter*);
 	typedef NTSTATUS (APIENTRY *FP_WaitForVerticalBlankEventFunc) (FP_WaitForVerticalBlankEvent*);
+	typedef NTSTATUS (APIENTRY *FP_GetScanLineFunc) (FP_GetScanLine*);
 	typedef HRESULT (WINAPI *FP_DwmGetCompositionTimingInfoFunc) (HWND, DWM_TIMING_INFO*);
 	typedef BOOL (WINAPI *FP_MiniDumpWriteDumpFunc) (HANDLE, DWORD, HANDLE, int, void*, void*, void*);
 
@@ -57,8 +67,6 @@ namespace lime {
 	static const Uint64 SPIN_NS = 1000000ULL; // SDL sleeps on a high-res waitable timer; 1 ms covers the wake
 
 	// hardcoded tuning -- edit and rebuild (lime rebuild is ~10 s)
-	// present lead before the predicted edge; lower = tear line closer to the bottom
-	static const Uint64 DEFAULT_EPS_NS = 400000ULL;
 	// D3DKMT wakes after the edge; PLL_EPS carries the wake latency, the bias shifts the phase
 	static const Uint64 PLL_EPS_NS = 100ULL;
 	static const Uint64 PLL_BIAS_NS = 200000ULL;
@@ -75,6 +83,7 @@ namespace lime {
 		FP_OpenAdapterFromLuidFunc openAdapter;
 		FP_CloseAdapterFunc closeAdapter;
 		FP_WaitForVerticalBlankEventFunc waitVBlank;
+		FP_GetScanLineFunc getScanLine;
 		FP_DwmGetCompositionTimingInfoFunc dwmTiming;
 		Uint64 qpcFreq;
 
@@ -88,13 +97,16 @@ namespace lime {
 		// anchor thread output (SDL clock)
 		std::atomic<Uint64> anchorEdge;    // last known vblank edge
 		std::atomic<Uint64> anchorPeriod;  // hardware period when it is trusted
-		std::atomic<bool> anchorHw;        // edge/period came from DWM, not a wake
+		std::atomic<long long> dwmGap;     // DWM vblank stamp minus the wake clock (diagnostic)
+		std::atomic<bool> anchorHw;        // phase source flag, pinned off: DWM only supplies the period
 		std::atomic<Uint64> vbAlive;
 		std::atomic<Uint64> predEdge;      // PLL estimate of the last wake edge
 		std::atomic<Uint64> realPeriod;
 		std::atomic<bool> rebindHint;
 		std::atomic<bool> displayBound;
 		std::atomic<Uint64> periodOverride;
+		std::atomic<D3DKMT_HANDLE> scanAdapter;
+		std::atomic<UINT> scanSource;
 
 		// anchor thread state
 		std::thread* anchorThread;
@@ -118,7 +130,7 @@ namespace lime {
 		int divergeRound;
 		Uint64 lastVbForPeriod;
 		Uint64 lastRebindNs;
-		int hwFailStreak;
+		Uint64 lastDwmNs;
 
 		// game thread pacing
 		DWORD lastRefreshRate;
@@ -164,6 +176,14 @@ namespace lime {
 		void* lastGlContext;
 		bool pacerOff;
 
+		// raster position sampled around the swap: v = blanking, a = active scan
+		UINT beamStartLine;
+		bool beamStartBlank;
+		UINT beamEndLine;
+		bool beamEndBlank;
+		bool beamValid;
+		bool beamEndValid;
+
 		// stats window
 		Uint32 swapCount;
 		Uint32 tearCount;
@@ -182,6 +202,7 @@ namespace lime {
 			openAdapter = nullptr;
 			closeAdapter = nullptr;
 			waitVBlank = nullptr;
+			getScanLine = nullptr;
 			dwmTiming = nullptr;
 			qpcFreq = 0;
 
@@ -193,6 +214,7 @@ namespace lime {
 
 			anchorEdge = 0;
 			anchorPeriod = 0;
+			dwmGap = 0;
 			anchorHw = false;
 			vbAlive = 0;
 			predEdge = 0;
@@ -226,7 +248,7 @@ namespace lime {
 			divergeRound = 0;
 			lastVbForPeriod = 0;
 			lastRebindNs = 0;
-			hwFailStreak = 0;
+			lastDwmNs = 0;
 
 			lastRefreshRate = 0;
 			lastMonitor = nullptr;
@@ -261,6 +283,14 @@ namespace lime {
 			lastStartNs = 0;
 			lastGlContext = nullptr;
 			pacerOff = getenv ("LIME_NO_SCANLINE_GATE") != nullptr;
+			scanAdapter = 0;
+			scanSource = 0;
+			beamStartLine = 0;
+			beamStartBlank = false;
+			beamEndLine = 0;
+			beamEndBlank = false;
+			beamValid = false;
+			beamEndValid = false;
 			gpuQueryInit = false;
 			gpuQueryActive = false;
 			gpuQueryIndex = 0;
@@ -286,6 +316,7 @@ namespace lime {
 				openAdapter = (FP_OpenAdapterFromLuidFunc) GetProcAddress (gdi, "D3DKMTOpenAdapterFromLuid");
 				closeAdapter = (FP_CloseAdapterFunc) GetProcAddress (gdi, "D3DKMTCloseAdapter");
 				waitVBlank = (FP_WaitForVerticalBlankEventFunc) GetProcAddress (gdi, "D3DKMTWaitForVerticalBlankEvent");
+				getScanLine = (FP_GetScanLineFunc) GetProcAddress (gdi, "D3DKMTGetScanLine");
 
 			}
 
@@ -349,6 +380,8 @@ namespace lime {
 
 
 		void CloseCurrentAdapter () {
+
+			scanAdapter = 0;
 
 			if (adapterOpen && closeAdapter) {
 
@@ -572,9 +605,12 @@ namespace lime {
 						hAdapter = oa.hAdapter;
 						vidPnSourceId = paths[i].sourceInfo.id;
 						adapterOpen = true;
+						scanAdapter = hAdapter;
+						scanSource = vidPnSourceId;
 						lastVbForPeriod = 0;
 						failStreak = 0;
-						hwFailStreak = 0;
+						lastDwmNs = 0;
+						dwmGap = 0;
 
 						// stale interval would trip the divergence check
 						realPeriod = 0;
@@ -725,35 +761,46 @@ namespace lime {
 
 				}
 
-				// hardware edge, no thread wake bias
-				bool hwOk = false;
-				Uint64 hwEdge = 0;
-				Uint64 hwPeriod = 0;
+				// DWM's vblank stamp is not the scanout edge: measured against the wake
+				// clock it sits ~3 ms early in fullscreen and follows desktop composition.
+				// Only its exact period is kept (plus its gap, for the log), sampled rarely.
+				if (now - lastDwmNs > 1000000000ULL) {
 
-				if (useDwm.load () && dwmTiming && qpcFreq) {
+					lastDwmNs = now;
 
-					DWM_TIMING_INFO ti;
+					if (useDwm.load () && dwmTiming && qpcFreq) {
 
-					memset (&ti, 0, sizeof (ti));
-					ti.cbSize = (UINT) sizeof (ti);
+						LARGE_INTEGER qpcAtNow;
 
-					if (dwmTiming (nullptr, &ti) == S_OK && ti.qpcVBlank) {
+						QueryPerformanceCounter (&qpcAtNow);
 
-						LARGE_INTEGER qpcNow;
+						DWM_TIMING_INFO ti;
 
-						QueryPerformanceCounter (&qpcNow);
+						memset (&ti, 0, sizeof (ti));
+						ti.cbSize = (UINT) sizeof (ti);
 
-						long long delta = (long long) qpcNow.QuadPart - (long long) ti.qpcVBlank;
+						if (dwmTiming (nullptr, &ti) == S_OK) {
 
-						if (delta >= 0) {
+							if (ti.qpcRefreshPeriod) {
 
-							Uint64 age = QpcToNs ((Uint64) delta);
+								Uint64 hp = QpcToNs ((Uint64) ti.qpcRefreshPeriod);
 
-							if (age < 100000000ULL) {
+								if (hp && (!periodNs || (hp > periodNs / 2 && hp < periodNs * 2))) {
 
-								hwOk = true;
-								hwEdge = now - age;
-								hwPeriod = ti.qpcRefreshPeriod ? QpcToNs ((Uint64) ti.qpcRefreshPeriod) : 0;
+									anchorPeriod = hp;
+
+								}
+
+							}
+
+							if (ti.qpcVBlank) {
+
+								long long delta = (long long) qpcAtNow.QuadPart - (long long) ti.qpcVBlank;
+								long long age = delta < 0
+									? -(long long) QpcToNs ((Uint64) (-delta))
+									: (long long) QpcToNs ((Uint64) delta);
+
+								dwmGap = (long long) predEdge.load () - ((long long) now - age);
 
 							}
 
@@ -763,35 +810,10 @@ namespace lime {
 
 				}
 
-				if (hwOk) {
-
-					hwFailStreak = 0;
-					anchorEdge = hwEdge;
-
-					if (hwPeriod && (!periodNs || (hwPeriod > periodNs / 2 && hwPeriod < periodNs * 2))) {
-
-						anchorPeriod = hwPeriod;
-
-					} else {
-
-						anchorPeriod = basePeriod;
-
-					}
-
-					anchorHw = true;
-
-				} else if (anchorHw.load () && ++hwFailStreak < 20 && now - anchorEdge.load () < 200000000ULL) {
-
-					// one stale DWM sample must not flip the phase back to the late wake clock
-
-				} else {
-
-					hwFailStreak = 0;
-					anchorEdge = predEdge.load ();
-					anchorPeriod = basePeriod;
-					anchorHw = false;
-
-				}
+				// phase always from the wake PLL: the fullscreen line only lands in the
+				// blanking with this reference
+				anchorEdge = predEdge.load ();
+				anchorHw = false;
 
 				// persistent measured-vs-CCD mismatch = wrong display binding
 				Uint64 base = periodNs;
@@ -1022,15 +1044,15 @@ namespace lime {
 		// DWM's period is exact; the measured one is only used as a fallback
 		Uint64 PacingPeriod () {
 
+			Uint64 override = periodOverride.load ();
+
+			if (override >= 1000000ULL && override <= 100000000ULL) return override;
+
 			Uint64 p = EffectivePeriod ();
 
-			if (anchorHw.load ()) {
+			Uint64 hp = anchorPeriod.load ();
 
-				Uint64 hp = anchorPeriod.load ();
-
-				if (hp && (!periodNs || (hp > periodNs * 9 / 10 && hp < periodNs * 11 / 10))) p = hp;
-
-			}
+			if (hp && (!periodNs || (hp > periodNs * 9 / 10 && hp < periodNs * 11 / 10))) p = hp;
 
 			return p;
 
@@ -1039,7 +1061,7 @@ namespace lime {
 
 		Uint64 EffectiveEps () {
 
-			return anchorHw.load () ? DEFAULT_EPS_NS : PLL_EPS_NS;
+			return PLL_EPS_NS;
 
 		}
 
@@ -1223,14 +1245,38 @@ namespace lime {
 
 			}
 
-			char buf[384];
+			char beam[40];
+
+			if (beamValid) {
+
+				if (beamEndValid) {
+
+					snprintf (beam, sizeof (beam), "%u%c/%u%c",
+						beamStartLine, beamStartBlank ? 'v' : 'a',
+						beamEndLine, beamEndBlank ? 'v' : 'a');
+
+				} else {
+
+					snprintf (beam, sizeof (beam), "%u%c/?", beamStartLine, beamStartBlank ? 'v' : 'a');
+
+				}
+
+			} else {
+
+				snprintf (beam, sizeof (beam), "na");
+
+			}
+
+			char buf[512];
 
 			snprintf (buf, sizeof (buf),
-				"[FramePacer] state | fs=%d tgt=%.0f step=%d anchor=%s P=%.3f eps=%.3f body=%.2f margin=%.2f gpu=%.2f swap=%.2f | fps=%.1f swaps=%u tear=%u late=%u err avg=%.2f min=%.2f max=%.2f | iv50=%.2f iv99=%.2f ivmax=%.2f\n",
+				"[FramePacer] state | fs=%d tgt=%.0f step=%d anchor=%s gap=%.2f beam=%s P=%.3f eps=%.3f body=%.2f margin=%.2f gpu=%.2f swap=%.2f | fps=%.1f swaps=%u tear=%u late=%u err avg=%.2f min=%.2f max=%.2f | iv50=%.2f iv99=%.2f ivmax=%.2f\n",
 				fullscreenMode ? 1 : 0,
 				tgt,
 				gridStep,
 				anchorHw.load () ? "hw" : "pll",
+				(double) dwmGap.load () / 1e6,
+				beam,
 				framePeriod / 1e6,
 				frameEps / 1e6,
 				bodyEst / 1e6,
@@ -1698,6 +1744,30 @@ namespace lime {
 		}
 
 
+		// raster read for the present probe: false when the query is unavailable
+		bool GetBeam (UINT* line, bool* blank) {
+
+			D3DKMT_HANDLE adapter = scanAdapter.load ();
+
+			if (!getScanLine || !adapter) return false;
+
+			FP_GetScanLine g;
+
+			g.hAdapter = adapter;
+			g.VidPnSourceId = scanSource.load ();
+			g.InVerticalBlank = 0;
+			g.ScanLine = 0;
+
+			if (getScanLine (&g) < 0) return false;
+
+			if (line) *line = g.ScanLine;
+			if (blank) *blank = g.InVerticalBlank != 0;
+
+			return true;
+
+		}
+
+
 		bool ShouldSwap (Uint64 now) {
 
 			if (!gateActive) {
@@ -1748,6 +1818,8 @@ namespace lime {
 
 			if (readyAt > deadline) lateCount++;
 
+			beamValid = GetBeam (&beamStartLine, &beamStartBlank);
+
 			swapStartAt = SDL_GetTicksNS ();
 			heartbeat = swapStartAt;
 
@@ -1768,6 +1840,8 @@ namespace lime {
 			if (now <= swapStartAt || now - swapStartAt >= 20000000ULL) return;
 
 			swapEndAt = now;
+
+			beamEndValid = GetBeam (&beamEndLine, &beamEndBlank);
 
 			UpdateSwapLead (now - swapStartAt);
 
