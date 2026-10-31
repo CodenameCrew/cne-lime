@@ -135,6 +135,11 @@ class NativeWindow
 		parent.context = context;
 
 		setFrameRate(Reflect.hasField(attributes, "frameRate") ? attributes.frameRate : 60);
+
+		if (Reflect.hasField(attributes, "framePacerMode"))
+		{
+			setFramePacerMode(attributes.framePacerMode);
+		}
 		#end
 
 		// SDL 2 enables text input events by default, but we want them only

@@ -94,9 +94,18 @@ namespace lime {
 
 			void SetMode (int mode);
 
+			// vsync changed: re-read the swap interval on the next frame
+			void RefreshSwapInterval ();
+
 			bool WaitFrameStart (Uint64 target);
 
-			bool ShouldSwap (Uint64 now);
+			// hold the swap until the present deadline; bound window only
+			void WaitSwap ();
+
+			bool IsBoundWindow (SDL_Window* window);
+
+			// true when WaitFrameStart held this frame
+			bool IsGated ();
 
 			void OnSwapBegin ();
 

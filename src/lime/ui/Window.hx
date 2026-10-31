@@ -234,6 +234,7 @@ class Window
 		__resizable = Reflect.hasField(__attributes, "resizable") ? __attributes.resizable : false;
 		__maximized = Reflect.hasField(__attributes, "maximized") ? __attributes.maximized : false;
 		__minimized = Reflect.hasField(__attributes, "minimized") ? __attributes.minimized : false;
+		__framePacerMode = Reflect.hasField(__attributes, "framePacerMode") ? __attributes.framePacerMode : AUTO;
 
 		id = -1;
 

@@ -69,8 +69,9 @@ namespace lime {
 	// D3DKMT wakes after the edge; PLL_EPS carries the wake latency, the bias shifts the phase
 	static const Uint64 PLL_EPS_NS = 100ULL;
 	static const Uint64 PLL_BIAS_NS = 200000ULL;
-	// windowed: DWM latches before the vblank, so hit the frame well before the edge
-	static const Uint64 WINDOWED_EPS_NS = 1500000ULL;
+	// windowed: DWM's compose deadline sits ~3 ms before the edge; later presents
+	// slip one refresh
+	static const Uint64 WINDOWED_EPS_NS = 3500000ULL;
 	// GPU budget on top of the CPU body; lower = line closer to the bottom, higher = more headroom
 	static const Uint64 DEFAULT_GPU_MARGIN_NS = 1000000ULL;
 	// fullscreen only: present phase in percent of one refresh (env LIME_PRESENT_PHASE_PCT)
@@ -99,10 +100,8 @@ namespace lime {
 		bool prevLockMode;
 
 		// anchor thread output (SDL clock)
-		std::atomic<Uint64> anchorEdge;    // last known vblank edge
 		std::atomic<Uint64> anchorPeriod;  // hardware period when it is trusted
 		std::atomic<long long> dwmGap;     // DWM vblank stamp minus the wake clock (diagnostic)
-		std::atomic<bool> anchorHw;        // phase source flag, pinned off: DWM only supplies the period
 		std::atomic<Uint64> vbAlive;
 		std::atomic<Uint64> predEdge;      // PLL estimate of the last wake edge
 		std::atomic<Uint64> realPeriod;
@@ -170,7 +169,9 @@ namespace lime {
 		Uint64 gpuMargin;
 		Uint64 baseMargin;
 		Uint64 frameBase;
-		bool prevAnchorHw;
+		// cached swap interval: the driver query costs a WGL call per frame
+		int swapInterval;
+		Uint64 lastSwapCheckNs;
 		GLuint gpuQueries[3];
 		bool gpuQueryInit;
 		bool gpuQueryActive;
@@ -225,10 +226,8 @@ namespace lime {
 			mode = -1;
 			prevLockMode = false;
 
-			anchorEdge = 0;
 			anchorPeriod = 0;
 			dwmGap = 0;
-			anchorHw = false;
 			vbAlive = 0;
 			predEdge = 0;
 			realPeriod = 0;
@@ -292,11 +291,13 @@ namespace lime {
 			gpuMargin = DEFAULT_GPU_MARGIN_NS;
 			baseMargin = DEFAULT_GPU_MARGIN_NS;
 			frameBase = 0;
-			prevAnchorHw = false;
+			swapInterval = 0;
+			lastSwapCheckNs = 0;
 			lastTarget = 0;
 			pacedLogged = false;
 			lastStartNs = 0;
 			lastGlContext = nullptr;
+			// legacy variable name: this now disables the whole pacer, anchor included
 			pacerOff = getenv ("LIME_NO_SCANLINE_GATE") != nullptr;
 			logEnabled = false;
 
@@ -454,6 +455,21 @@ namespace lime {
 				GateLogRaw ("[FramePacer] hang watchdog armed\n");
 
 			}
+
+		}
+
+
+		// only the bound window is gated; other windows swap straight through
+		bool IsBoundWindow (SDL_Window* window) {
+
+			return sdlWindow && window == sdlWindow;
+
+		}
+
+
+		bool IsGated () {
+
+			return gateActive;
 
 		}
 
@@ -841,11 +857,6 @@ namespace lime {
 
 				}
 
-				// phase always from the wake PLL: the fullscreen line only lands in the
-				// blanking with this reference
-				anchorEdge = predEdge.load ();
-				anchorHw = false;
-
 				// persistent measured-vs-CCD mismatch = wrong display binding
 				Uint64 base = periodNs;
 				Uint64 smoothed = realPeriod.load ();
@@ -1090,13 +1101,6 @@ namespace lime {
 		}
 
 
-		Uint64 EffectiveEps () {
-
-			return PLL_EPS_NS;
-
-		}
-
-
 		// First edge strictly after t, computed from the anchor's last edge
 		Uint64 NextEdgeAfter (Uint64 t, Uint64 period, Uint64 base) {
 
@@ -1218,8 +1222,7 @@ namespace lime {
 			char buf[224];
 
 			snprintf (buf, sizeof (buf),
-				"[FramePacer] paced: anchor=%s P=%.3f ms eps=%.3f ms swap=%.3f ms margin=%.3f ms step=%d\n",
-				anchorHw.load () ? "hw" : "pll",
+				"[FramePacer] paced: anchor=pll P=%.3f ms eps=%.3f ms swap=%.3f ms margin=%.3f ms step=%d\n",
 				framePeriod / 1e6,
 				frameEps / 1e6,
 				swapLead / 1e6,
@@ -1311,13 +1314,12 @@ namespace lime {
 			Uint64 lat = (gateActive && targetEdge > frameStartT0) ? targetEdge - frameStartT0 : 0;
 
 			snprintf (buf, sizeof (buf),
-				"[FramePacer] state | fs=%d mode=%d lock=%d tgt=%.0f step=%d anchor=%s gap=%.2f beam=%s P=%.3f eps=%.3f body=%.2f margin=%.2f gpu=%.2f swap=%.2f sw=%.2f/%.2f pad=%.2f/%.2f lat=%.2f | fps=%.1f swaps=%u tear=%u late=%u err avg=%.2f min=%.2f max=%.2f | iv50=%.2f iv99=%.2f ivmax=%.2f\n",
+				"[FramePacer] state | fs=%d mode=%d lock=%d tgt=%.0f step=%d gap=%.2f beam=%s P=%.3f eps=%.3f body=%.2f margin=%.2f gpu=%.2f swap=%.2f sw=%.2f/%.2f pad=%.2f/%.2f lat=%.2f | fps=%.1f swaps=%u tear=%u late=%u err avg=%.2f min=%.2f max=%.2f | iv50=%.2f iv99=%.2f ivmax=%.2f\n",
 				fullscreenMode ? 1 : 0,
 				mode.load (),
 				prevLockMode ? 1 : 0,
 				tgt,
 				gridStep,
-				anchorHw.load () ? "hw" : "pll",
 				(double) dwmGap.load () / 1e6,
 				beam,
 				framePeriod / 1e6,
@@ -1512,7 +1514,9 @@ namespace lime {
 
 			lastTarget = target;
 
-			heartbeat = SDL_GetTicksNS ();
+			Uint64 now = SDL_GetTicksNS ();
+
+			heartbeat = now;
 
 			// kill switch for A/B: the whole pacer (anchor included) stays off
 			if (pacerOff) {
@@ -1547,10 +1551,6 @@ namespace lime {
 
 			}
 
-			Uint64 now = SDL_GetTicksNS ();
-
-			heartbeat = now;
-
 			// a load or GC stall must not inherit the old grid: start right away
 			// and re-anchor on the next frame
 			Uint64 gap = lastStartNs ? now - lastStartNs : 0;
@@ -1583,8 +1583,10 @@ namespace lime {
 
 			}
 
-			// display checks run even when pacing is off (3 s poll, first bind retries every frame)
-			if (!lastMonitor || rebindHint.load () || now - lastCheckNs >= 3000000000ULL) {
+			// 3 s poll once bound, 100 ms retry while unbound
+			Uint64 checkNs = lastMonitor ? 3000000000ULL : 100000000ULL;
+
+			if (!lastCheckNs || rebindHint.load () || now - lastCheckNs >= checkNs) {
 
 				lastCheckNs = now;
 				CheckDisplay ();
@@ -1599,10 +1601,31 @@ namespace lime {
 
 			if (!alive || now - alive > ANCHOR_STALE_NS) return false;
 
-			// Never pace on top of vsync
-			int swapInterval = 0;
+			// no cap and not locked: there is no grid to lock onto, so skip the rest
+			if (!lock && target == 0) {
 
-			if (SDL_GL_GetSwapInterval (&swapInterval) && swapInterval != 0) return false;
+				framePeriod = PacingPeriod ();
+				frameEps = 0;
+				gridStep = 1;
+
+				return false;
+
+			}
+
+			// never pace on top of vsync; the WGL query is cached and re-read once
+			// per second (RefreshSwapInterval invalidates it)
+			if (!lastSwapCheckNs || now - lastSwapCheckNs >= 1000000000ULL) {
+
+				lastSwapCheckNs = now;
+				int interval = 0;
+
+				if (!SDL_GL_GetSwapInterval (&interval)) interval = 0;
+
+				swapInterval = interval;
+
+			}
+
+			if (swapInterval != 0) return false;
 
 			Uint64 period = PacingPeriod ();
 
@@ -1622,9 +1645,8 @@ namespace lime {
 
 			}
 
-			// adaptive: a free-running cap beats against the composition grid;
-			// only whole-refresh caps can be locked to it
-			if (!lock && (target == 0 || std::fabs ((double) target - (double) step * (double) period) > (double) period / 32.0)) {
+			// adaptive: only whole-refresh caps can lock to the composition grid
+			if (!lock && std::fabs ((double) target - (double) step * (double) period) > (double) period / 32.0) {
 
 				framePeriod = period;
 				frameEps = 0;
@@ -1634,21 +1656,12 @@ namespace lime {
 
 			}
 
-			Uint64 base = anchorEdge.load ();
+			Uint64 base = predEdge.load ();
 
 			if (!base) return false;
 
-			bool hw = anchorHw.load ();
-
-			if (hw != prevAnchorHw) {
-
-				prevAnchorHw = hw;
-				nextTarget = 0;
-
-			}
-
 			// D3DKMT wakes after the edge; shift the predicted clock by the mean wake
-			if (!hw && base > PLL_BIAS_NS) base -= PLL_BIAS_NS;
+			if (base > PLL_BIAS_NS) base -= PLL_BIAS_NS;
 
 			gridStep = step;
 			framePeriod = period;
@@ -1686,7 +1699,7 @@ namespace lime {
 
 			} else {
 
-				eps = EffectiveEps ();
+				eps = PLL_EPS_NS;
 
 				// body over one grid: the extra lead is the overlap the next frame
 				// needs to start before this frame's GPU tail finishes
@@ -1702,7 +1715,8 @@ namespace lime {
 
 			}
 
-			if (eps > 3000000ULL) eps = 3000000ULL;
+			// above the windowed eps, so its compose deadline stays reachable
+			if (eps > 6000000ULL) eps = 6000000ULL;
 
 			frameEps = eps;
 
@@ -1763,13 +1777,13 @@ namespace lime {
 		}
 
 
-		// windowed swap blocks on the driver/DWM copy; P90 keeps the lead honest
+		// windowed swap blocks on the driver/DWM copy; P95 keeps the lead honest
 		// without paying for the rare multi-ms spike every frame
 		void UpdateSwapLead (Uint64 swap) {
 
 			if (swap > swapMax) swapMax = swap;
 
-			// a non-blocking swap reads 0; it still has to age the ring out
+			// a non-blocking swap reads 0; multi-ms spikes are dropped from the p95
 			if (swap > 4000000ULL) return;
 
 			swapRing[swapIndex] = swap;
@@ -1860,7 +1874,8 @@ namespace lime {
 		}
 
 
-		bool ShouldSwap (Uint64 now) {
+		// blocks until the present deadline; the swap always runs
+		void WaitSwap () {
 
 			if (!gateActive) {
 
@@ -1869,7 +1884,7 @@ namespace lime {
 
 				if (logEnabled) swapCount++;
 
-				return true;
+				return;
 
 			}
 
@@ -1912,8 +1927,6 @@ namespace lime {
 
 			swapStartAt = SDL_GetTicksNS ();
 			heartbeat = swapStartAt;
-
-			return true;
 
 		}
 
@@ -2141,6 +2154,13 @@ namespace lime {
 	}
 
 
+	void FramePacer::RefreshSwapInterval () {
+
+		if (impl) ((FramePacerImpl*) impl)->lastSwapCheckNs = 0;
+
+	}
+
+
 	bool FramePacer::WaitFrameStart (Uint64 target) {
 
 		if (!impl) return false;
@@ -2150,11 +2170,27 @@ namespace lime {
 	}
 
 
-	bool FramePacer::ShouldSwap (Uint64 now) {
+	void FramePacer::WaitSwap () {
 
-		if (!impl) return true;
+		if (impl) ((FramePacerImpl*) impl)->WaitSwap ();
 
-		return ((FramePacerImpl*) impl)->ShouldSwap (now);
+	}
+
+
+	bool FramePacer::IsBoundWindow (SDL_Window* window) {
+
+		if (!impl) return false;
+
+		return ((FramePacerImpl*) impl)->IsBoundWindow (window);
+
+	}
+
+
+	bool FramePacer::IsGated () {
+
+		if (!impl) return false;
+
+		return ((FramePacerImpl*) impl)->IsGated ();
 
 	}
 
@@ -2216,6 +2252,12 @@ namespace lime {
 	}
 
 
+	void FramePacer::RefreshSwapInterval () {
+
+
+	}
+
+
 	bool FramePacer::WaitFrameStart (Uint64 target) {
 
 		return false;
@@ -2223,9 +2265,22 @@ namespace lime {
 	}
 
 
-	bool FramePacer::ShouldSwap (Uint64 now) {
+	void FramePacer::WaitSwap () {
 
-		return true;
+
+	}
+
+
+	bool FramePacer::IsBoundWindow (SDL_Window* window) {
+
+		return false;
+
+	}
+
+
+	bool FramePacer::IsGated () {
+
+		return false;
 
 	}
 
