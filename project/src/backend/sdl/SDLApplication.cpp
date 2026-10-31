@@ -50,6 +50,8 @@ namespace lime {
 	SDLApplication* SDLApplication::currentApplication = 0;
 	bool inBackground = false;
 
+	static FrameWaitState frameWait;
+
 
 	const int analogAxisDeadZone = 1000;
 	std::map<int, std::map<int, int> > gamepadsAxisMap;
@@ -854,6 +856,8 @@ namespace lime {
 		SDL_SetiOSAnimationCallback (window->sdlWindow, 1, UpdateFrame, NULL);
 		#endif
 
+		framePacer.SetWindow (window->sdlWindow);
+
 	}
 
 
@@ -865,6 +869,15 @@ namespace lime {
 
 
 	bool SDLApplication::Update () {
+
+		// start the frame so render+swap lands just before the next compositor boundary
+		bool paced = false;
+
+		if (!inBackground) {
+
+			paced = framePacer.WaitFrameStart (frameTime.target);
+
+		}
 
 		SDL_Event event;
 
@@ -904,21 +917,19 @@ namespace lime {
 		frameTime.frame = frameTime.current - frameTime.previous;
 		frameTime.previous = frameTime.current;
 
+		if (paced) {
+
+				// pacing owns this frame: skip the time-based end-of-frame wait
+				framePacer.OnFrameEnd (frameTime.current);
+
+			}
+
 		// If the frame was faster than the target frame time, delay to cap FPS
-		if (frameTime.frame < frameTime.target) {
+		else if (frameTime.frame < frameTime.target) {
 
 			Uint64 deadline = frameTime.previous + (frameTime.target - frameTime.frame);
 
-			// Portion of the wait left to spinning; sleeps handle the rest to save CPU
-			const Uint64 SPIN_MARGIN_NS = 1500000; // 1.5 ms
-
-			Uint64 now = SDL_GetTicksNS ();
-			if (deadline > now + SPIN_MARGIN_NS) {
-				SDL_DelayNS (deadline - now - SPIN_MARGIN_NS);
-			}
-			while (SDL_GetTicksNS () < deadline) {
-				// Busy-wait until the exact frame deadline
-			}
+			FrameWaitUntil (frameWait, deadline);
 
 			// Measure the actual time spent waiting and add it to frameTime
 			frameTime.current = SDL_GetTicksNS ();

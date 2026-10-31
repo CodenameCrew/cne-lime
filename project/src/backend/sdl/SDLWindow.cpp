@@ -315,7 +315,30 @@ namespace lime {
 
 	bool SDLWindow::SetVSyncMode (int mode) {
 
-		return SDL_GL_SetSwapInterval (mode);
+		bool result = SDL_GL_SetSwapInterval (mode);
+
+		if (result) {
+
+			FramePacer* framePacer = SDLApplication::GetFramePacer ();
+
+			if (framePacer) framePacer->RefreshSwapInterval ();
+
+		}
+
+		return result;
+
+	}
+
+
+	bool SDLWindow::SetFramePacerMode (int mode) {
+
+		FramePacer* framePacer = SDLApplication::GetFramePacer ();
+
+		if (!framePacer) return false;
+
+		framePacer->SetMode (mode);
+
+		return true;
 
 	}
 
@@ -362,7 +385,31 @@ namespace lime {
 			}
 			#endif
 
-			SDL_GL_SwapWindow (sdlWindow);
+			FramePacer* framePacer = SDLApplication::GetFramePacer ();
+			bool bound = framePacer && framePacer->IsBoundWindow (sdlWindow);
+
+			if (bound) {
+
+				// submit before the pacer waits, so the GPU works during the wait;
+				// an ungated swap flushes itself
+				if (framePacer->IsGated ()) {
+
+					glFlush ();
+
+				}
+
+				framePacer->WaitSwap ();
+				framePacer->OnSwapBegin ();
+
+				SDL_GL_SwapWindow (sdlWindow);
+
+				framePacer->OnSwapEnd (SDL_GetTicksNS ());
+
+			} else {
+
+				SDL_GL_SwapWindow (sdlWindow);
+
+			}
 
 		}
 

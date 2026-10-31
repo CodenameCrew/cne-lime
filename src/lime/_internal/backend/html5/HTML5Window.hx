@@ -396,6 +396,11 @@ class HTML5Window
 		return false;
 	}
 
+	public function setFramePacerMode(mode:lime.ui.WindowFramePacerMode):Bool
+	{
+		return false;
+	}
+
 	private function focusTextInput():Void
 	{
 		// Avoid changing focus multiple times per frame.

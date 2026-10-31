@@ -29,6 +29,7 @@ namespace lime {
 
 			virtual int Alert (int type, const char* message, const char* title, const char** buttons, int count) = 0;
 			virtual bool SetVSyncMode (int mode) = 0;
+			virtual bool SetFramePacerMode (int mode) = 0;
 			virtual void Close () = 0;
 			virtual void ContextFlip () = 0;
 			virtual void ContextMakeCurrent () = 0;

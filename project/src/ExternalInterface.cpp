@@ -3215,6 +3215,22 @@ namespace lime {
 	}
 
 
+	bool lime_window_set_frame_pacer_mode (value window, int mode) {
+
+		Window* targetWindow = (Window*)val_data (window);
+		return targetWindow->SetFramePacerMode (mode);
+
+	}
+
+
+	HL_PRIM bool HL_NAME(hl_window_set_frame_pacer_mode) (HL_CFFIPointer* window, int mode) {
+
+		Window* targetWindow = (Window*)window->ptr;
+		return targetWindow->SetFramePacerMode (mode);
+
+	}
+
+
 	void lime_window_close (value window) {
 
 		Window* targetWindow = (Window*)val_data (window);
@@ -4091,6 +4107,7 @@ namespace lime {
 	DEFINE_PRIME2v (lime_text_event_manager_register);
 	DEFINE_PRIME2v (lime_touch_event_manager_register);
 	DEFINE_PRIME5 (lime_window_alert);
+	DEFINE_PRIME2 (lime_window_set_frame_pacer_mode);
 	DEFINE_PRIME2 (lime_window_set_vsync_mode);
 	DEFINE_PRIME1v (lime_window_close);
 	DEFINE_PRIME1v (lime_window_context_flip);
@@ -4288,6 +4305,7 @@ namespace lime {
 	DEFINE_HL_PRIM (_VOID, hl_text_event_manager_register, _FUN (_VOID, _NO_ARG) _TTEXT_EVENT);
 	DEFINE_HL_PRIM (_VOID, hl_touch_event_manager_register, _FUN (_VOID, _NO_ARG) _TTOUCH_EVENT);
 	DEFINE_HL_PRIM (_I32, hl_window_alert, _TCFFIPOINTER _I32 _STRING _STRING _ARR);
+	DEFINE_HL_PRIM (_BOOL, hl_window_set_frame_pacer_mode, _TCFFIPOINTER _I32);
 	DEFINE_HL_PRIM (_BOOL, hl_window_set_vsync_mode, _TCFFIPOINTER _I32);
 	DEFINE_HL_PRIM (_VOID, hl_window_close, _TCFFIPOINTER);
 	DEFINE_HL_PRIM (_VOID, hl_window_context_flip, _TCFFIPOINTER);

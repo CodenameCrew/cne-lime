@@ -266,6 +266,7 @@
 			<file name="src/backend/sdl/SDLKeyCode.cpp" />
 			<file name="src/backend/sdl/SDLSystem.cpp" />
 			<file name="src/backend/sdl/SDLWindow.cpp" />
+			<file name="src/backend/sdl/FramePacer.cpp" />
 
 		</section>
 

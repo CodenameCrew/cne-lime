@@ -135,6 +135,11 @@ class NativeWindow
 		parent.context = context;
 
 		setFrameRate(Reflect.hasField(attributes, "frameRate") ? attributes.frameRate : 60);
+
+		if (Reflect.hasField(attributes, "framePacerMode"))
+		{
+			setFramePacerMode(attributes.framePacerMode);
+		}
 		#end
 
 		// SDL 2 enables text input events by default, but we want them only
@@ -214,6 +219,18 @@ class NativeWindow
 		{
 			#if (!macro && lime_cffi)
 			return NativeCFFI.lime_window_set_vsync_mode(handle, mode);
+			#end
+		}
+
+		return false;
+	}
+
+	public function setFramePacerMode(mode:lime.ui.WindowFramePacerMode):Bool
+	{
+		if (handle != null)
+		{
+			#if (!macro && lime_cffi)
+			return NativeCFFI.lime_window_set_frame_pacer_mode(handle, mode);
 			#end
 		}
 
