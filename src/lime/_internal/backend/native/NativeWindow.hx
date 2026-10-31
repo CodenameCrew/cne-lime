@@ -220,6 +220,18 @@ class NativeWindow
 		return false;
 	}
 
+	public function setFramePacerMode(mode:lime.ui.WindowFramePacerMode):Bool
+	{
+		if (handle != null)
+		{
+			#if (!macro && lime_cffi)
+			return NativeCFFI.lime_window_set_frame_pacer_mode(handle, mode);
+			#end
+		}
+
+		return false;
+	}
+
 	public function getCursor():MouseCursor
 	{
 		return cursor;

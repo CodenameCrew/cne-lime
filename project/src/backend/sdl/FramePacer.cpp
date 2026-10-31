@@ -64,9 +64,8 @@ namespace lime {
 
 
 	static const Uint64 ANCHOR_STALE_NS = 200000000ULL;
-	static const Uint64 SPIN_NS = 1000000ULL; // SDL sleeps on a high-res waitable timer; 1 ms covers the wake
 
-	// hardcoded tuning -- edit and rebuild (lime rebuild is ~10 s)
+	// hardcoded tuning -- edit and rebuild
 	// D3DKMT wakes after the edge; PLL_EPS carries the wake latency, the bias shifts the phase
 	static const Uint64 PLL_EPS_NS = 100ULL;
 	static const Uint64 PLL_BIAS_NS = 200000ULL;
@@ -74,6 +73,8 @@ namespace lime {
 	static const Uint64 WINDOWED_EPS_NS = 1500000ULL;
 	// GPU budget on top of the CPU body; lower = line closer to the bottom, higher = more headroom
 	static const Uint64 DEFAULT_GPU_MARGIN_NS = 1000000ULL;
+	// fullscreen only: present phase in percent of one refresh (env LIME_PRESENT_PHASE_PCT)
+	static const Uint64 PRESENT_PHASE_PCT_DEFAULT = 5;
 	static const Uint64 STAT_WINDOW_NS = 10000000000ULL;
 
 
@@ -93,6 +94,9 @@ namespace lime {
 		Uint64 periodNs;
 		std::atomic<Uint32> requestGen;
 		std::atomic<bool> useDwm;
+		// API pacing mode: -1 auto, 0 off, 1 adaptive, 2 locked
+		std::atomic<int> mode;
+		bool prevLockMode;
 
 		// anchor thread output (SDL clock)
 		std::atomic<Uint64> anchorEdge;    // last known vblank edge
@@ -144,12 +148,16 @@ namespace lime {
 		Uint64 targetEdge;
 		Uint64 nextTarget;
 		int gridStep;
+		FrameWaitState startWait;
+		FrameWaitState swapWait;
 		Uint64 frameStartT0;
 		Uint64 readyAt;
 		Uint64 presentAt;
 		Uint64 swapStartAt;
 		Uint64 swapEndAt;
 		Uint64 swapLead;
+		Uint64 swapP95;
+		Uint64 swapMax;
 		Uint64 swapRing[32];
 		int swapIndex;
 		int swapSamples;
@@ -175,6 +183,9 @@ namespace lime {
 		Uint64 lastStartNs;
 		void* lastGlContext;
 		bool pacerOff;
+		// LIME_FRAMEPACER_LOG=1 enables framepacer.log and the stats behind it
+		bool logEnabled;
+		Uint64 presentPhasePct;
 
 		// raster position sampled around the swap: v = blanking, a = active scan
 		UINT beamStartLine;
@@ -211,6 +222,8 @@ namespace lime {
 			periodNs = 0;
 			requestGen = 0;
 			useDwm = false;
+			mode = -1;
+			prevLockMode = false;
 
 			anchorEdge = 0;
 			anchorPeriod = 0;
@@ -267,6 +280,8 @@ namespace lime {
 			swapStartAt = 0;
 			swapEndAt = 0;
 			swapLead = 300000ULL;
+			swapP95 = 0;
+			swapMax = 0;
 			swapIndex = 0;
 			swapSamples = 0;
 			lastPresentAt = 0;
@@ -283,6 +298,24 @@ namespace lime {
 			lastStartNs = 0;
 			lastGlContext = nullptr;
 			pacerOff = getenv ("LIME_NO_SCANLINE_GATE") != nullptr;
+			logEnabled = false;
+
+			if (const char* logSwitch = getenv ("LIME_FRAMEPACER_LOG")) {
+
+				logEnabled = strcmp (logSwitch, "1") == 0;
+
+			}
+			presentPhasePct = PRESENT_PHASE_PCT_DEFAULT;
+
+			if (const char* phase = getenv ("LIME_PRESENT_PHASE_PCT")) {
+
+				long long parsed = atoll (phase);
+
+				if (parsed >= 0) presentPhasePct = (Uint64) parsed;
+
+				if (presentPhasePct > 50) presentPhasePct = 50;
+
+			}
 			scanAdapter = 0;
 			scanSource = 0;
 			beamStartLine = 0;
@@ -761,9 +794,7 @@ namespace lime {
 
 				}
 
-				// DWM's vblank stamp is not the scanout edge: measured against the wake
-				// clock it sits ~3 ms early in fullscreen and follows desktop composition.
-				// Only its exact period is kept (plus its gap, for the log), sampled rarely.
+				// DWM's vblank stamp is not the scanout edge, only its exact period is kept
 				if (now - lastDwmNs > 1000000000ULL) {
 
 					lastDwmNs = now;
@@ -1109,6 +1140,8 @@ namespace lime {
 			swapStartAt = 0;
 			swapEndAt = 0;
 			swapLead = 300000ULL;
+			swapP95 = 0;
+			swapMax = 0;
 			swapIndex = 0;
 			swapSamples = 0;
 
@@ -1128,10 +1161,13 @@ namespace lime {
 		// stderr/OutputDebugString are invisible for a GUI app -- log to file too
 		void GateLogRaw (const char* text) {
 
+			if (!logEnabled) return;
+
 			static std::mutex logMutex;
 			std::lock_guard<std::mutex> lock (logMutex);
 
-			char stamped[256];
+			// oversized so the ~350-char state line keeps its newline
+			char stamped[640];
 
 			snprintf (stamped, sizeof (stamped), "[%llu ms] %s",
 				(unsigned long long) (SDL_GetTicksNS () / 1000000ULL), text);
@@ -1197,6 +1233,8 @@ namespace lime {
 
 		// log on state change or every 10 s; intervals, not swap counts, are the evidence
 		void LogStateHeartbeat () {
+
+			if (!logEnabled) return;
 
 			Uint64 now = SDL_GetTicksNS ();
 
@@ -1267,11 +1305,16 @@ namespace lime {
 
 			}
 
-			char buf[512];
+			char buf[640];
+
+			// frame start to the target edge: input age bound for this frame
+			Uint64 lat = (gateActive && targetEdge > frameStartT0) ? targetEdge - frameStartT0 : 0;
 
 			snprintf (buf, sizeof (buf),
-				"[FramePacer] state | fs=%d tgt=%.0f step=%d anchor=%s gap=%.2f beam=%s P=%.3f eps=%.3f body=%.2f margin=%.2f gpu=%.2f swap=%.2f | fps=%.1f swaps=%u tear=%u late=%u err avg=%.2f min=%.2f max=%.2f | iv50=%.2f iv99=%.2f ivmax=%.2f\n",
+				"[FramePacer] state | fs=%d mode=%d lock=%d tgt=%.0f step=%d anchor=%s gap=%.2f beam=%s P=%.3f eps=%.3f body=%.2f margin=%.2f gpu=%.2f swap=%.2f sw=%.2f/%.2f pad=%.2f/%.2f lat=%.2f | fps=%.1f swaps=%u tear=%u late=%u err avg=%.2f min=%.2f max=%.2f | iv50=%.2f iv99=%.2f ivmax=%.2f\n",
 				fullscreenMode ? 1 : 0,
+				mode.load (),
+				prevLockMode ? 1 : 0,
 				tgt,
 				gridStep,
 				anchorHw.load () ? "hw" : "pll",
@@ -1283,6 +1326,11 @@ namespace lime {
 				gpuMargin / 1e6,
 				gpuBody / 1e6,
 				swapLead / 1e6,
+				(double) swapP95 / 1e6,
+				(double) swapMax / 1e6,
+				(double) startWait.pad / 1e6,
+				(double) swapWait.pad / 1e6,
+				(double) lat / 1e6,
 				fps,
 				swapCount,
 				tearCount,
@@ -1304,6 +1352,7 @@ namespace lime {
 			errMax = 0;
 			ivIndex = 0;
 			ivCount = 0;
+			swapMax = 0;
 			statWindow = now;
 
 		}
@@ -1366,12 +1415,19 @@ namespace lime {
 				if (floor < 400000.0) floor = 400000.0;
 				if (target < floor) target = floor;
 
+			} else {
+
+				// fullscreen: the flip latches at GPU finish, so the margin covers the whole tail
+				double floor = gpuBody - (double) swapLead;
+
+				if (floor < 400000.0) floor = 400000.0;
+				if (target < floor) target = floor;
+
 			}
 
 			double step = target - (double) gpuMargin;
 
-			// scene spikes jump the margin straight to the new target; the old
-			// 10 us/frame slew took ~1 s and parked the tear line mid-screen
+			// scene spikes jump the margin straight to the new target
 			if (step > 200000.0) {
 
 				gpuMargin = (Uint64) target;
@@ -1441,6 +1497,17 @@ namespace lime {
 		}
 
 
+		Uint64 PresentPhase (Uint64 period) const {
+
+			if (!fullscreenMode || !presentPhasePct || !period) return 0;
+
+			Uint64 phase = period * presentPhasePct / 100;
+
+			return phase < period / 2 ? phase : period / 2;
+
+		}
+
+
 		bool WaitFrameStart (Uint64 target) {
 
 			lastTarget = target;
@@ -1467,14 +1534,25 @@ namespace lime {
 
 			fullscreenMode = fs;
 
+			int requested = mode.load ();
+
+			if (requested < 0) requested = 1;
+
+			bool lock = requested == 2;
+
+			if (lock != prevLockMode) {
+
+				prevLockMode = lock;
+				ResetPacing ();
+
+			}
+
 			Uint64 now = SDL_GetTicksNS ();
 
 			heartbeat = now;
 
-			// a load or GC stall must not inherit the old grid: start this frame
-			// right away and re-anchor on the next one (input is already queued).
-			// display reconfiguration is skipped too, it can block while the mode
-			// the load left behind is still settling
+			// a load or GC stall must not inherit the old grid: start right away
+			// and re-anchor on the next frame
 			Uint64 gap = lastStartNs ? now - lastStartNs : 0;
 
 			lastStartNs = now;
@@ -1494,6 +1572,16 @@ namespace lime {
 			}
 
 			LogStateHeartbeat ();
+
+			// pacer disabled at runtime: the plain frame-rate wait owns the cap
+			if (requested == 0) {
+
+				gateActive = false;
+				nextTarget = 0;
+
+				return false;
+
+			}
 
 			// display checks run even when pacing is off (3 s poll, first bind retries every frame)
 			if (!lastMonitor || rebindHint.load () || now - lastCheckNs >= 3000000000ULL) {
@@ -1534,11 +1622,9 @@ namespace lime {
 
 			}
 
-			// windowed: a free-running cap beats against DWM's composition grid;
+			// adaptive: a free-running cap beats against the composition grid;
 			// only whole-refresh caps can be locked to it
-			bool windowed = !fullscreenMode;
-
-			if (windowed && (target == 0 || std::fabs ((double) target - (double) step * (double) period) > (double) period / 32.0)) {
+			if (!lock && (target == 0 || std::fabs ((double) target - (double) step * (double) period) > (double) period / 32.0)) {
 
 				framePeriod = period;
 				frameEps = 0;
@@ -1571,9 +1657,13 @@ namespace lime {
 			Uint64 grid = period * (Uint64) step;
 			Uint64 edge;
 
+			Uint64 phase = PresentPhase (period);
+
 			if (!nextTarget || nextTarget <= now) {
 
 				edge = NextEdgeAfter (now, grid, base);
+
+				if (edge) edge += phase;
 
 			} else {
 
@@ -1587,7 +1677,7 @@ namespace lime {
 
 			Uint64 eps;
 
-			if (windowed) {
+			if (!fullscreenMode) {
 
 				eps = WINDOWED_EPS_NS;
 
@@ -1652,11 +1742,7 @@ namespace lime {
 				stallPhase = 1;
 				heartbeat = SDL_GetTicksNS ();
 
-				if (wait > SPIN_NS) SDL_DelayNS (wait - SPIN_NS);
-
-				while (SDL_GetTicksNS () < start) {
-
-				}
+				FrameWaitUntil (startWait, start);
 
 				stallPhase = 0;
 
@@ -1680,6 +1766,8 @@ namespace lime {
 		// windowed swap blocks on the driver/DWM copy; P90 keeps the lead honest
 		// without paying for the rare multi-ms spike every frame
 		void UpdateSwapLead (Uint64 swap) {
+
+			if (swap > swapMax) swapMax = swap;
 
 			// a non-blocking swap reads 0; it still has to age the ring out
 			if (swap > 4000000ULL) return;
@@ -1714,17 +1802,21 @@ namespace lime {
 			if (idx >= swapSamples) idx = swapSamples - 1;
 			if (idx < 0) idx = 0;
 
-			swapLead = tmp[idx] + 100000ULL;
+			swapP95 = tmp[idx];
+			swapLead = swapP95 + 100000ULL;
 
 			if (swapLead < 100000ULL) swapLead = 100000ULL;
-			if (swapLead > 1500000ULL) swapLead = 1500000ULL;
+
+			// the submit can outlast 1.5 ms; 3 ms keeps the lead inside a 5 ms refresh
+			if (swapLead > 3000000ULL) swapLead = 3000000ULL;
 
 		}
 
 
 		void RecordPresent (Uint64 t) {
 
-			if (lastPresentAt) {
+			// lastPresentAt clamps the next frame start; the interval ring is log-only
+			if (logEnabled && lastPresentAt) {
 
 				Uint64 iv = t - lastPresentAt;
 
@@ -1772,9 +1864,10 @@ namespace lime {
 
 			if (!gateActive) {
 
-				// unpaced (windowed limiter, vsync): stats still need the real cadence
+				// unpaced: keep lastPresentAt fresh, counters are log-only
 				RecordPresent (SDL_GetTicksNS ());
-				swapCount++;
+
+				if (logEnabled) swapCount++;
 
 				return true;
 
@@ -1804,11 +1897,7 @@ namespace lime {
 					stallPhase = 2;
 					heartbeat = readyAt;
 
-					if (wait > SPIN_NS) SDL_DelayNS (wait - SPIN_NS);
-
-					while (SDL_GetTicksNS () < deadline) {
-
-					}
+					FrameWaitUntil (swapWait, deadline);
 
 					stallPhase = 0;
 
@@ -1816,9 +1905,10 @@ namespace lime {
 
 			}
 
-			if (readyAt > deadline) lateCount++;
+			if (logEnabled && readyAt > deadline) lateCount++;
 
-			beamValid = GetBeam (&beamStartLine, &beamStartBlank);
+			// the beam probe only feeds the state line, so it is log-only
+			if (logEnabled) beamValid = GetBeam (&beamStartLine, &beamStartBlank);
 
 			swapStartAt = SDL_GetTicksNS ();
 			heartbeat = swapStartAt;
@@ -1841,7 +1931,7 @@ namespace lime {
 
 			swapEndAt = now;
 
-			beamEndValid = GetBeam (&beamEndLine, &beamEndBlank);
+			if (logEnabled) beamEndValid = GetBeam (&beamEndLine, &beamEndBlank);
 
 			UpdateSwapLead (now - swapStartAt);
 
@@ -1924,25 +2014,30 @@ namespace lime {
 			presentAt = present ? present : frameEnd;
 			presentErr = (long long) presentAt - (long long) targetEdge;
 
-			if (presentErr > 0) tearCount++;
-
 			RecordPresent (presentAt);
 
-			errSum += presentErr;
+			// stat counters are log-only, presentErr stays live (it re-anchors the grid)
+			if (logEnabled) {
 
-			if (swapCount == 0) {
+				if (presentErr > 0) tearCount++;
 
-				errMin = presentErr;
-				errMax = presentErr;
+				errSum += presentErr;
 
-			} else {
+				if (swapCount == 0) {
 
-				if (presentErr < errMin) errMin = presentErr;
-				if (presentErr > errMax) errMax = presentErr;
+					errMin = presentErr;
+					errMax = presentErr;
+
+				} else {
+
+					if (presentErr < errMin) errMin = presentErr;
+					if (presentErr > errMax) errMax = presentErr;
+
+				}
+
+				swapCount++;
 
 			}
-
-			swapCount++;
 
 			// one present per grid point: the next target is the one after this
 			// edge, and a late frame re-anchors on the edge after the present
@@ -1951,7 +2046,12 @@ namespace lime {
 			if (grid) {
 
 				if (presentErr <= 0) nextTarget = targetEdge + grid;
-				else nextTarget = NextEdgeAfter (presentAt, grid, frameBase);
+				else {
+
+					Uint64 t = NextEdgeAfter (presentAt, grid, frameBase);
+					nextTarget = t + PresentPhase (framePeriod);
+
+				}
 
 			} else {
 
@@ -1967,6 +2067,7 @@ namespace lime {
 	FramePacer::FramePacer () {
 
 		impl = nullptr;
+		mode = -1;
 
 	}
 
@@ -2018,7 +2119,24 @@ namespace lime {
 
 		}
 
+		((FramePacerImpl*) impl)->mode = mode;
+
 		((FramePacerImpl*) impl)->OnWindowSet (sdlWindow);
+
+	}
+
+
+	void FramePacer::SetMode (int mode) {
+
+		if (mode < -1 || mode > 2) mode = -1;
+
+		this->mode = mode;
+
+		if (impl) {
+
+			((FramePacerImpl*) impl)->mode = mode;
+
+		}
 
 	}
 
@@ -2075,6 +2193,7 @@ namespace lime {
 	FramePacer::FramePacer () {
 
 		impl = nullptr;
+		mode = -1;
 
 	}
 
@@ -2086,6 +2205,12 @@ namespace lime {
 
 
 	void FramePacer::SetWindow (SDL_Window* sdlWindow) {
+
+
+	}
+
+
+	void FramePacer::SetMode (int mode) {
 
 
 	}

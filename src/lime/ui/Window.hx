@@ -45,6 +45,12 @@ class Window
 	**/
 	public var frameRate(get, set):Float;
 
+	/**
+	 * How the pacer aligns presents with the display refresh. Defaults to `AUTO`,
+	 * which behaves like `ADAPTIVE`.
+	**/
+	public var framePacerMode(get, set):WindowFramePacerMode;
+
 	public var fullscreen(get, set):Bool;
 	public var height(get, set):Int;
 	public var hidden(get, never):Bool;
@@ -157,6 +163,7 @@ class Window
 	@:noCompletion private var __attributes:WindowAttributes;
 	@:noCompletion private var __backend:WindowBackend;
 	@:noCompletion private var __borderless:Bool;
+	@:noCompletion private var __framePacerMode:WindowFramePacerMode = AUTO;
 	@:noCompletion private var __fullscreen:Bool;
 	@:noCompletion private var __height:Int;
 	@:noCompletion private var __hidden:Bool;
@@ -185,6 +192,7 @@ class Window
 				"display": {get: p.get_display},
 				"displayMode": {get: p.get_displayMode, set: p.set_displayMode},
 				"frameRate": {get: p.get_frameRate, set: p.set_frameRate},
+				"framePacerMode": {get: p.get_framePacerMode, set: p.set_framePacerMode},
 				"fullscreen": {get: p.get_fullscreen, set: p.set_fullscreen},
 				"height": {get: p.get_height, set: p.set_height},
 				"maxHeight": {get: p.get_maxHeight, set: p.set_maxHeight},
@@ -589,6 +597,21 @@ class Window
 	@:noCompletion private inline function set_frameRate(value:Float):Float
 	{
 		return __backend.setFrameRate(value);
+	}
+
+	@:noCompletion private inline function get_framePacerMode():WindowFramePacerMode
+	{
+		return __framePacerMode;
+	}
+
+	@:noCompletion private function set_framePacerMode(value:WindowFramePacerMode):WindowFramePacerMode
+	{
+		if (__backend.setFramePacerMode(value))
+		{
+			__framePacerMode = value;
+		}
+
+		return __framePacerMode;
 	}
 
 	@:noCompletion private inline function get_fullscreen():Bool

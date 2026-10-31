@@ -320,6 +320,19 @@ namespace lime {
 	}
 
 
+	bool SDLWindow::SetFramePacerMode (int mode) {
+
+		FramePacer* framePacer = SDLApplication::GetFramePacer ();
+
+		if (!framePacer) return false;
+
+		framePacer->SetMode (mode);
+
+		return true;
+
+	}
+
+
 	void SDLWindow::Close () {
 
 		if (sdlWindow) {

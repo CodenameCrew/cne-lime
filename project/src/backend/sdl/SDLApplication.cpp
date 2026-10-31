@@ -50,6 +50,8 @@ namespace lime {
 	SDLApplication* SDLApplication::currentApplication = 0;
 	bool inBackground = false;
 
+	static FrameWaitState frameWait;
+
 
 	const int analogAxisDeadZone = 1000;
 	std::map<int, std::map<int, int> > gamepadsAxisMap;
@@ -927,16 +929,7 @@ namespace lime {
 
 			Uint64 deadline = frameTime.previous + (frameTime.target - frameTime.frame);
 
-			// Portion of the wait left to spinning; sleeps handle the rest to save CPU
-			const Uint64 SPIN_MARGIN_NS = 1000000; // 1 ms
-
-			Uint64 now = SDL_GetTicksNS ();
-			if (deadline > now + SPIN_MARGIN_NS) {
-				SDL_DelayNS (deadline - now - SPIN_MARGIN_NS);
-			}
-			while (SDL_GetTicksNS () < deadline) {
-				// Busy-wait until the exact frame deadline
-			}
+			FrameWaitUntil (frameWait, deadline);
 
 			// Measure the actual time spent waiting and add it to frameTime
 			frameTime.current = SDL_GetTicksNS ();
