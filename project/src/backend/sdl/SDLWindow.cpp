@@ -124,8 +124,6 @@ namespace lime {
 
 		}
 
-		context = SDL_GL_CreateContext (sdlWindow);
-
 		static const GLContextRequest contextRequests[] = {
 
 			#ifdef LIME_OPENGL_GL
