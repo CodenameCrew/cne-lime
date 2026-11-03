@@ -272,7 +272,6 @@ class NativeAudioSource
 
 	public function dispose():Void
 	{
-		loopPoints = null;
 		mins = null;
 		maxs = null;
 
@@ -391,10 +390,11 @@ class NativeAudioSource
 		if (loaded)
 		{
 			AL.sourceRewind(source);
+
+			loopPoints[0] = 0;
+			loopPoints[1] = samples;
 		}
 
-		loopPoints[0] = 0;
-		loopPoints[1] = samples;
 		streamLoops = 0;
 	}
 
