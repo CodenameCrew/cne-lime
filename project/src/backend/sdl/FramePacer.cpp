@@ -1223,7 +1223,7 @@ namespace lime {
 
 		void LogPaced () {
 
-			if (pacedLogged) return;
+			if (!logEnabled || pacedLogged) return;
 
 			pacedLogged = true;
 
