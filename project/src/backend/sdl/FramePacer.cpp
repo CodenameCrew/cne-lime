@@ -450,9 +450,13 @@ namespace lime {
 
 				}
 
-				watchdogThread = new std::thread (WatchdogLoopStatic, this);
+				if (logEnabled) {
 
-				GateLogRaw ("[FramePacer] hang watchdog armed\n");
+					watchdogThread = new std::thread (WatchdogLoopStatic, this);
+
+					GateLogRaw ("[FramePacer] hang watchdog armed\n");
+
+				}
 
 			}
 
@@ -938,6 +942,8 @@ namespace lime {
 
 		void WatchdogLoop () {
 
+			if (!logEnabled) return;
+
 			while (running) {
 
 				for (int i = 0; i < 20 && running; i++) SDL_DelayNS (50000000ULL);
@@ -967,7 +973,7 @@ namespace lime {
 
 		void WriteHangDump () {
 
-			if (!dumpWriter) return;
+			if (!logEnabled || !dumpWriter) return;
 
 			HANDLE file = CreateFileW (L"framepacer-hang.dmp", GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 
@@ -1039,6 +1045,8 @@ namespace lime {
 
 
 		void LogStall (const char* event, Uint64 value) {
+
+			if (!logEnabled) return;
 
 			Uint64 now = SDL_GetTicksNS ();
 			Uint64 last = lastStallLog.load ();
@@ -1215,7 +1223,7 @@ namespace lime {
 
 		void LogPaced () {
 
-			if (pacedLogged) return;
+			if (!logEnabled || pacedLogged) return;
 
 			pacedLogged = true;
 

@@ -4,6 +4,12 @@
 
 #include <SDL3/SDL.h>
 
+#if defined (_MSC_VER)
+
+#include <intrin.h>
+
+#endif
+
 
 namespace lime {
 
@@ -14,6 +20,21 @@ namespace lime {
 	static const Uint64 FRAME_WAIT_PAD_DEFAULT_NS = 1000000ULL;
 	// later than this is preemption, not timer lateness
 	static const Uint64 FRAME_WAIT_PAD_MAX_NS = 4000000ULL;
+
+
+	inline void FrameSpinPause () {
+
+#if defined (_MSC_VER) && (defined (_M_X64) || defined (_M_IX86))
+
+		_mm_pause ();
+
+#elif defined (__GNUC__) && (defined (__x86_64__) || defined (__i386__))
+
+		__builtin_ia32_pause ();
+
+#endif
+
+	}
 
 
 	struct FrameWaitState {
@@ -77,6 +98,8 @@ namespace lime {
 		}
 
 		while (SDL_GetTicksNS () < deadline) {
+
+			FrameSpinPause ();
 
 		}
 
