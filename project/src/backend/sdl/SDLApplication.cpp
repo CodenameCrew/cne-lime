@@ -20,6 +20,12 @@
 #endif
 
 namespace lime {
+	static inline float GetPixelDensity (SDL_WindowID windowID) {
+		SDL_Window* window = SDL_GetWindowFromID (windowID);
+		if (!window) return 1.0f;  // fallback will always be 1 for 1:1 scaling purposes
+		float density = SDL_GetWindowPixelDensity (window);
+		return density > 0.0f ? density : 1.0f;
+	}
 
 	#if LIME_IMGUI
 	inline void imguiNewFrame () {
@@ -305,6 +311,8 @@ namespace lime {
 			case SDL_EVENT_WINDOW_RESTORED:
 			case SDL_EVENT_WINDOW_EXPOSED:
 			case SDL_EVENT_WINDOW_RESIZED:
+			case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+			case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
 
 				ProcessWindowEvent(event);
 				break;
@@ -620,38 +628,41 @@ namespace lime {
 
 			switch (event->type) {
 
-				case SDL_EVENT_MOUSE_MOTION:
+				case SDL_EVENT_MOUSE_MOTION: {
 
+					float density = GetPixelDensity (event->motion.windowID);
 					mouseEvent.type = MOUSE_MOVE;
-					mouseEvent.x = event->motion.x;
-					mouseEvent.y = event->motion.y;
-					mouseEvent.movementX = event->motion.xrel;
-					mouseEvent.movementY = event->motion.yrel;
+					mouseEvent.x = event->motion.x * density;
+					mouseEvent.y = event->motion.y * density;
+					mouseEvent.movementX = event->motion.xrel * density;
+					mouseEvent.movementY = event->motion.yrel * density;
 					break;
 
-				case SDL_EVENT_MOUSE_BUTTON_DOWN:
+				} case SDL_EVENT_MOUSE_BUTTON_DOWN: {
 
 					SDL_CaptureMouse (true);
 
+					float density = GetPixelDensity (event->motion.windowID);
 					mouseEvent.type = MOUSE_DOWN;
 					mouseEvent.button = event->button.button - 1;
-					mouseEvent.x = event->button.x;
-					mouseEvent.y = event->button.y;
+					mouseEvent.x = event->button.x * density;
+					mouseEvent.y = event->button.y * density;
 					mouseEvent.clickCount = event->button.clicks;
 					break;
 
-				case SDL_EVENT_MOUSE_BUTTON_UP:
+				} case SDL_EVENT_MOUSE_BUTTON_UP: {
 
 					SDL_CaptureMouse (false);
 
+					float density = GetPixelDensity (event->motion.windowID);
 					mouseEvent.type = MOUSE_UP;
 					mouseEvent.button = event->button.button - 1;
-					mouseEvent.x = event->button.x;
-					mouseEvent.y = event->button.y;
+					mouseEvent.x = event->button.x * density;
+					mouseEvent.y = event->button.y * density;
 					mouseEvent.clickCount = event->button.clicks;
 					break;
 
-				case SDL_EVENT_MOUSE_WHEEL:
+				} case SDL_EVENT_MOUSE_WHEEL:
 
 					mouseEvent.type = MOUSE_WHEEL;
 
@@ -808,14 +819,19 @@ namespace lime {
 					break;
 
 				case SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED:
+				case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
 				case SDL_EVENT_WINDOW_RESIZED: {
 
-					int width = event->window.data1;
-					int height = event->window.data2;
+					int width = 0;  // the event returns logical coordinates, but openfl needs PIXEL coordinates
+					int height = 0;
+
+					SDL_Window* sdlWindow = SDL_GetWindowFromID (event->window.windowID);
+					if (sdlWindow) SDL_GetWindowSizeInPixels (sdlWindow, &width, &height);
 
 					if (width == 0 && height == 0) {
 
-						SDL_GetWindowSizeInPixels (SDL_GetWindowFromID (event->window.windowID), &width, &height);
+						width = event->window.data1;
+						height = event->window.data2;
 
 					}
 
